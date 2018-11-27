@@ -32,7 +32,7 @@ pooled_size = int(input_side_diamension * input_side_diamension * input_side_dia
 
 def conv3d_relu(x, kernel_shape, bias_shape, strides):
     weights = tf.get_variable("weights_con", kernel_shape, initializer=tf.truncated_normal_initializer(stddev=0.1))
-    biases = tf.get_variable("bias_con", bias_shape, initializer=tf.constant_initializer(0.1))
+    biases = tf.get_variable("bias_con", bias_shape, initializer=tf.constant_initializer(0.0))
     conv = tf.nn.conv3d(x, weights, strides=strides, padding="SAME")
     return tf.nn.relu(conv + biases)
 
@@ -48,13 +48,13 @@ def max_pool(x, kernel_shape, strides):
 
 def relu(x, x_diamension, neurals_num):
     weights = tf.get_variable("weights_relu", [x_diamension, neurals_num], initializer=tf.truncated_normal_initializer(stddev=0.1))
-    biases = tf.get_variable("bias_relu", [neurals_num], initializer=tf.constant_initializer(0.1))
+    biases = tf.get_variable("bias_relu", [neurals_num], initializer=tf.constant_initializer(0.0))
     return tf.nn.relu(tf.matmul(x, weights) + biases)
 
 
 def softmax(x, x_diamension, neurals_num):
     weights = tf.get_variable("weights_soft", [x_diamension, neurals_num], initializer=tf.truncated_normal_initializer(stddev=0.1))
-    biases = tf.get_variable("bias_soft", [neurals_num], initializer=tf.constant_initializer(0.1))
+    biases = tf.get_variable("bias_soft", [neurals_num], initializer=tf.constant_initializer(0.0))
     return tf.nn.softmax(tf.matmul(x, weights) + biases)
 
 
@@ -171,7 +171,7 @@ if __name__ == '__main__':
                 sess.run(train_step, feed_dict={x_: data_mat})  # training
             print "epoch: " + str(epoch)
             print('loss=%s' % sess.run(loss, feed_dict={x_: data_mat}))
-            if epoch % 10 == 0:
+            if epoch % 100 == 0:
                 saver.save(sess, '/home/ubuntu/chg_workspace/3dcnn/model/' + str(epoch) + '_mnist.ckpt')
 
 

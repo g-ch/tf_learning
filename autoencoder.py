@@ -6,6 +6,7 @@ from tensorflow.examples.tutorials.mnist import input_data
 
 keep_prob = tf.placeholder("float")
 
+k_dia = {"a": 32}
 
 def conv_relu(x, kernel_shape, bias_shape, strides):
     weights = tf.get_variable("weights_con", kernel_shape, initializer=tf.truncated_normal_initializer(stddev=0.1))
@@ -38,7 +39,7 @@ def softmax(x, x_diamension, neurals_num):
 def cnn_encoder(x):
     with tf.variable_scope("encoder"):
         with tf.variable_scope("conv1"):
-            relu1 = conv_relu(x, kernel_shape=[3, 3, 1, 32], bias_shape=[32], strides=[1, 1, 1, 1])
+            relu1 = conv_relu(x, kernel_shape=[3, 3, 1, k_dia["a"]], bias_shape=[32], strides=[1, 1, 1, 1])
             pool1 = max_pool(relu1, kernel_shape=[1, 2, 2, 1], strides=[1, 2, 2, 1])
         with tf.variable_scope("conv2"):
             relu2 = conv_relu(pool1, kernel_shape=[3, 3, 32, 64], bias_shape=[64], strides=[1, 1, 1, 1])
@@ -69,7 +70,17 @@ def cnn_autoencoder():
     input_image = tf.reshape(x_, [-1, 28, 28, 1])
 
     encode_output = cnn_encoder(input_image)
-    decode_image = cnn_decoder(encode_output)
+
+    cnn_flat = tf.reshape(encode_output, [-1, 7 * 7 * 64])
+
+    with tf.variable_scope("fully_encoder"):
+        fully_encoder = relu(cnn_flat, 7 * 7 * 64, 4)
+    with tf.variable_scope("fully_decoder"):
+        fully_decoder = relu(fully_encoder, 4, 7 * 7 * 64)
+
+    cnn_recover = tf.reshape(fully_decoder, [-1, 7, 7, 64])
+
+    decode_image = cnn_decoder(cnn_recover)
 
     loss = tf.reduce_mean(tf.square(input_image - decode_image))
     train_step = tf.train.AdamOptimizer(learning_rate).minimize(loss)
@@ -81,7 +92,7 @@ def cnn_autoencoder():
 
         total_batch = int(mnist.train.num_examples / batch_size)
 
-        for epoch in range(100):
+        for epoch in range(10):
             for i in range(total_batch):
                 batch = mnist.train.next_batch(batch_size)
                 sess.run(train_step, feed_dict={x_: batch[0]})  # training
@@ -147,7 +158,7 @@ def classify_test():
 
         total_batch = int(mnist.train.num_examples / batch_size)
 
-        for epoch in range(30):
+        for epoch in range(10):
             for i in range(total_batch):
                 batch = mnist.train.next_batch(batch_size)
                 sess.run(train_step, feed_dict={x_: batch[0], y_: batch[1], keep_prob: 0.5})  # training

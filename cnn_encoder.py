@@ -4,52 +4,66 @@ import numpy as np
 import math
 import random
 
-input_side_diamension = 128
+input_side_diamension = 64
+
+device = {
+    "gpu1": "0",
+    "gpu2": "0"
+}
 
 encoder_para = {
     "kernel1": 5,
-    "stride1": 1,  # do not change
+    "stride1": 2,  # do not change
     "channel1": 32,
     "kernel2": 3,
     "stride2": 1,  # do not change
-    "channel2": 64,
+    "channel2": 32,
     "pool1": 4,  # 2 or 4 recommended, carefully choose according to input_side_diamension to keep values interger
-    "pool2": 4,  # 2 or 4 recommended, carefully choose according to input_side_diamension to keep values interger
-    "outdia": 4096
+    "pool2": 2,  # 2 or 4 recommended, carefully choose according to input_side_diamension to keep values interger
+    "outdia": 2048
 }
 
 pooled_side_len1 = input_side_diamension
-pooled_side_len2 = int(input_side_diamension / (encoder_para["pool1"]))
+pooled_side_len2 = int(input_side_diamension / (encoder_para["pool1"] * encoder_para["stride1"]))
 
-pooled_size = int(input_side_diamension * input_side_diamension * input_side_diamension * encoder_para["channel2"] / math.pow(encoder_para["pool1"]*encoder_para["pool2"], 3))
+pooled_size = int(input_side_diamension * input_side_diamension * input_side_diamension * encoder_para["channel2"] / math.pow(encoder_para["pool1"]*encoder_para["pool2"]*encoder_para["stride1"], 3))
 
 
 def conv3d_relu(x, kernel_shape, bias_shape, strides):
-    weights = tf.get_variable("weights_con", kernel_shape, initializer=tf.truncated_normal_initializer(stddev=0.1))
-    biases = tf.get_variable("bias_con", bias_shape, initializer=tf.constant_initializer(0.1))
-    conv = tf.nn.conv3d(x, weights, strides=strides, padding="SAME")
-    return tf.nn.relu(conv + biases)
+    with tf.device("/cpu:0"):
+        weights = tf.get_variable("weights_con", kernel_shape, initializer=tf.truncated_normal_initializer(stddev=0.1))
+        biases = tf.get_variable("bias_con", bias_shape, initializer=tf.constant_initializer(0.0))
+        with tf.device("/gpu:"+device["gpu2"]):
+            conv = tf.nn.conv3d(x, weights, strides=strides, padding="SAME")
+            return tf.nn.relu(conv + biases)
 
 
 def deconv3d(x, kernel_shape, output_shape, strides):
-    weights = tf.get_variable("weights_con", kernel_shape, initializer=tf.truncated_normal_initializer(stddev=0.1))
-    return tf.nn.conv3d_transpose(x, filter=weights, output_shape=output_shape, strides=strides)
+    with tf.device("/cpu:0"):
+        weights = tf.get_variable("weights_con", kernel_shape, initializer=tf.truncated_normal_initializer(stddev=0.1))
+        with tf.device("/gpu:" + device["gpu1"]):
+            return tf.nn.conv3d_transpose(x, filter=weights, output_shape=output_shape, strides=strides)
 
 
 def max_pool(x, kernel_shape, strides):
-    return tf.nn.max_pool3d(x, ksize=kernel_shape, strides=strides, padding='SAME')
+    with tf.device("/gpu:" + device["gpu1"]):
+        return tf.nn.max_pool3d(x, ksize=kernel_shape, strides=strides, padding='SAME')
 
 
 def relu(x, x_diamension, neurals_num):
-    weights = tf.get_variable("weights_relu", [x_diamension, neurals_num], initializer=tf.truncated_normal_initializer(stddev=0.1))
-    biases = tf.get_variable("bias_relu", [neurals_num], initializer=tf.constant_initializer(0.1))
-    return tf.nn.relu(tf.matmul(x, weights) + biases)
+    with tf.device("/cpu:0"):
+        weights = tf.get_variable("weights_relu", [x_diamension, neurals_num], initializer=tf.truncated_normal_initializer(stddev=0.1))
+        biases = tf.get_variable("bias_relu", [neurals_num], initializer=tf.constant_initializer(0.0))
+        with tf.device("/gpu:" + device["gpu1"]):
+            return tf.nn.relu(tf.matmul(x, weights) + biases)
 
 
 def softmax(x, x_diamension, neurals_num):
-    weights = tf.get_variable("weights_soft", [x_diamension, neurals_num], initializer=tf.truncated_normal_initializer(stddev=0.1))
-    biases = tf.get_variable("bias_soft", [neurals_num], initializer=tf.constant_initializer(0.1))
-    return tf.nn.softmax(tf.matmul(x, weights) + biases)
+    with tf.device("/cpu:0"):
+        weights = tf.get_variable("weights_soft", [x_diamension, neurals_num], initializer=tf.truncated_normal_initializer(stddev=0.1))
+        biases = tf.get_variable("bias_soft", [neurals_num], initializer=tf.constant_initializer(0.0))
+        with tf.device("/gpu:" + device["gpu1"]):
+            return tf.nn.softmax(tf.matmul(x, weights) + biases)
 
 
 def encoder(x):
@@ -84,7 +98,7 @@ def decoder(x, batch_size):
     k1 = encoder_para["kernel1"]
     s1 = encoder_para["stride1"]
     d1 = encoder_para["channel1"]
-    p1 = encoder_para["pool1"]
+    p1 = encoder_para["pool1"] * s1
 
     pl1 = pooled_side_len1
     pl2 = pooled_side_len2
@@ -98,13 +112,13 @@ def decoder(x, batch_size):
             deconv1 = deconv3d(conv1, [p2, p2, p2, d2, d2], output_shape=[batch_size, pl2, pl2, pl2, d2], strides=[1, p2, p2, p2, 1])
             print "deconv1", deconv1.get_shape()
         with tf.variable_scope("conv2"):
-            conv2 = conv3d_relu(deconv1, [k2, k2, k2, d2, d1], [d1], [1, s2, s2, s2, 1])
+            conv2 = conv3d_relu(deconv1, [k2, k2, k2, d2, d1], [d1], [1, 1, 1, 1, 1])
 
         with tf.variable_scope("deconv2"):
             deconv2 = deconv3d(conv2, [p1, p1, p1, d1, d1], output_shape=[batch_size, pl1, pl1, pl1, d1], strides=[1, p1, p1, p1, 1])
             print "deconv2", deconv2.get_shape()
         with tf.variable_scope("conv3"):
-            conv3 = conv3d_relu(deconv2, [k1, k1, k1, d1, 1], [1], [1, s1, s1, s1, 1])
+            conv3 = conv3d_relu(deconv2, [k1, k1, k1, d1, 1], [1], [1, 1, 1, 1, 1])
             print "conv3", conv3.get_shape()
             return conv3
 
@@ -113,7 +127,7 @@ if __name__ == '__main__':
     '''Random data generation'''
     choice_value = [0.0, 0.143, 0.286, 0.429, 0.571, 0.714, 0.857, 1.0]  # from 0/7 to 7/7
 
-    data_num = 5
+    data_num = 50
 
     print "generating data... Approximate time: " + str(data_num * 2.8 / 60.0) + " minutes"
     dia = input_side_diamension
@@ -122,12 +136,14 @@ if __name__ == '__main__':
     print "Data generation is completed!"
 
     '''Training'''
-    x_ = tf.placeholder("float", shape=[None, 128, 128, 128, 1])
+    x_ = tf.placeholder("float", shape=[None, dia, dia, dia, 1])
 
-    batch_size = 5
+    batch_size = 50
     learning_rate = 1e-4
 
     encode_vector = encoder(x_)
+
+    print "encode_vector: ", encode_vector.get_shape()
     decode_result = decoder(encode_vector, batch_size)
 
     loss = tf.reduce_mean(tf.square(x_ - decode_result))
@@ -140,13 +156,13 @@ if __name__ == '__main__':
 
         total_batch = int(data_num / batch_size)
 
-        for epoch in range(100):
+        for epoch in range(2000):
             for i in range(total_batch):
                 sess.run(train_step, feed_dict={x_: data_mat})  # training
 
             print "epoch: " + str(epoch)
             print('loss=%s' % sess.run(loss, feed_dict={x_: data_mat}))
-            if epoch % 10 == 0:
+            if epoch % 200 == 0:
                 saver.save(sess, '/home/ubuntu/chg_workspace/3dcnn/model/' + str(epoch) + '_mnist.ckpt')
 
 
