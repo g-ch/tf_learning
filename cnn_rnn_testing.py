@@ -191,7 +191,7 @@ if __name__ == '__main__':
 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())  # initialze variables
-        restorer.restore(sess, "/home/ubuntu/chg_workspace/3dcnn/model/20_cnn_rnn.ckpt")
+        restorer.restore(sess, "/home/ubuntu/chg_workspace/3dcnn/model/model_cnn_rnn_timestep5/70_cnn_rnn_2.ckpt")
         state_data_give = np.zeros([1, rnn_paras["state_len"]])
 
         results_to_draw = []

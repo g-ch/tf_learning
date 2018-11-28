@@ -146,7 +146,7 @@ def generate_sin_x_plus_y(number, side_dim, step, start_x, start_y):
         # data1
         cube = []
         for j in range(side_dim):
-            if j % 2 == 0:
+            if j < side_dim / 2:
                 cube.append([[sx for m in range(side_dim)] for n in range(side_dim)])
             else:
                 cube.append([[sy for m in range(side_dim)] for n in range(side_dim)])

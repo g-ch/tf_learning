@@ -15,7 +15,7 @@ save_every_n_epoch = 10
 ''' Parameters for RNN'''
 rnn_paras = {
     "raw_batch_size": 20,
-    "time_step": 4,
+    "time_step": 5,
     "state_len": 128,
     "input_len": 2176,
     "output_len": 2
@@ -132,12 +132,12 @@ def generate_sin_x_plus_y(number, side_dim, z_dim, out_dim, step, start_x, start
         sx = math.sin(x)
         sy = math.sin(y)
         sz = math.sin(z)
-        xyz = math.sin(x+y) + math.cos(z)
+        xyz = (math.sin(x+y) + math.cos(z)) / 2.0
 
         # data1
         cube = []
         for j in range(side_dim):
-            if j % 2 == 0:
+            if j < side_dim / 2:
                 cube.append([[sx for m in range(side_dim)] for n in range(side_dim)])
             else:
                 cube.append([[sy for m in range(side_dim)] for n in range(side_dim)])
@@ -206,7 +206,7 @@ if __name__ == '__main__':
     cube_dim = input_side_dimension
 
     # create a dataset, validate
-    data1, data2, label = generate_sin_x_plus_y(data_num, cube_dim, concat_paras["dim2"], rnn_paras["output_len"], 0.1, 0, 0.5, 2)
+    data1, data2, label = generate_sin_x_plus_y(data_num, cube_dim, concat_paras["dim2"], rnn_paras["output_len"], 0.2, 0, 0.5, 2)
     data1 = data1.reshape(data_num, cube_dim, cube_dim, cube_dim, 1)
 
     # batch get example
@@ -236,7 +236,7 @@ if __name__ == '__main__':
     result = myrnn(rnn_input, rnn_paras["input_len"], rnn_paras["output_len"], rnn_paras["raw_batch_size"], rnn_paras["time_step"], rnn_paras["state_len"])
 
     ''' Optimizer '''
-    loss = tf.reduce_mean(tf.abs(reference - result))
+    loss = tf.reduce_mean(tf.square(reference - result))
     train_step = tf.train.AdamOptimizer(learning_rate).minimize(loss)
     #train_step = tf.train.AdagradOptimizer(learning_rate).minimize(loss)
 
@@ -258,7 +258,7 @@ if __name__ == '__main__':
 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())  # initialze variables
-        restorer.restore(sess, "/home/ubuntu/chg_workspace/3dcnn/model/1900_autoencoder.ckpt")
+        restorer.restore(sess, "/home/ubuntu/chg_workspace/3dcnn/model/500_autoencoder.ckpt")
 
         # start epoches
         for epoch in range(epoch_num):
@@ -289,6 +289,6 @@ if __name__ == '__main__':
 
             if epoch % save_every_n_epoch == 0:
                 # save
-                saver.save(sess, '/home/ubuntu/chg_workspace/3dcnn/model/' + str(epoch) + '_cnn_rnn.ckpt')
+                saver.save(sess, '/home/ubuntu/chg_workspace/3dcnn/model/model_cnn_rnn_timestep5/' + str(epoch) + '_cnn_rnn_2.ckpt')
 
 
