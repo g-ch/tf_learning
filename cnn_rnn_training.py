@@ -8,8 +8,9 @@ import matplotlib.pyplot as plt
 ''' Batch size defined in Parameters for RNN '''
 total_data_num = 30
 input_side_dimension = 64
-learning_rate = 5e-4
+learning_rate = 1e-4
 epoch_num = 1000
+save_every_n_epoch = 10
 
 ''' Parameters for RNN'''
 rnn_paras = {
@@ -52,24 +53,25 @@ def myrnn(x, input_len, output_len, raw_batch_size, time_step, state_len):
     state dimension is also weights dimension in hidden layer
     output_len can be given as you want(same as label dimension)
     """
-    w = tf.get_variable("weight_x", [input_len, state_len], initializer=tf.random_normal_initializer)
-    u = tf.get_variable("weight_s", [state_len, state_len], initializer=tf.random_normal_initializer)
-    v = tf.get_variable("weight_y", [state_len, output_len], initializer=tf.random_normal_initializer)
-    b = tf.get_variable("bias", [output_len], initializer=tf.constant_initializer(0.0))
+    with tf.variable_scope("rnn"):
+        w = tf.get_variable("weight_x", [input_len, state_len], initializer=tf.truncated_normal_initializer(stddev=0.1)) #tf.random_normal_initializer)
+        u = tf.get_variable("weight_s", [state_len, state_len], initializer=tf.truncated_normal_initializer(stddev=0.1)) #tf.random_normal_initializer)
+        v = tf.get_variable("weight_y", [state_len, output_len], initializer=tf.truncated_normal_initializer(stddev=0.1)) #tf.random_normal_initializer)
+        b = tf.get_variable("bias", [output_len], initializer=tf.constant_initializer(0.0))
 
-    state = tf.get_variable("state", [raw_batch_size, state_len], trainable=False, initializer=tf.constant_initializer(0.0))
+        state = tf.get_variable("state", [raw_batch_size, state_len], trainable=False, initializer=tf.constant_initializer(0.0))
 
-    for seq in range(time_step):
-        x_temp = x[:, seq, :]  # might not be right
-        state = tf.nn.tanh(tf.matmul(state, u) + tf.matmul(x_temp, w))  # hidden layer activate function
+        for seq in range(time_step):
+            x_temp = x[:, seq, :]  # might not be right
+            state = tf.nn.tanh(tf.matmul(state, u) + tf.matmul(x_temp, w))  # hidden layer activate function
 
-    return tf.nn.tanh(tf.matmul(state, v) + b)  # output layer activate function
+        return tf.nn.tanh(tf.matmul(state, v) + b)  # output layer activate function
 
 
 def conv3d_relu(x, kernel_shape, bias_shape, strides):
     """ 3D convolution For 3D CNN encoder """
-    weights = tf.get_variable("weights_con", kernel_shape, initializer=tf.random_normal_initializer)  # truncated_normal_initializer(stddev=0.1))
-    biases = tf.get_variable("bias_con", bias_shape, initializer=tf.constant_initializer(0.0))
+    weights = tf.get_variable("weights_con", kernel_shape)  # truncated_normal_initializer(stddev=0.1))
+    biases = tf.get_variable("bias_con", bias_shape)
     conv = tf.nn.conv3d(x, weights, strides=strides, padding="SAME")
     return tf.nn.relu(conv + biases)
 
@@ -222,8 +224,7 @@ if __name__ == '__main__':
     reference = tf.placeholder("float", name="reference", shape=[None, rnn_paras["output_len"]])
 
     # 3D CNN
-    with tf.variable_scope("cnn"):
-        encode_vector = encoder(cube_data)
+    encode_vector = encoder(cube_data)
     # To flat vector
     encode_vector_flat = tf.reshape(encode_vector, [-1, encoder_para["outdim"]])
     # Concat, Note: dimension parameter should be 1, considering batch size
@@ -232,14 +233,12 @@ if __name__ == '__main__':
     # concat_vector = tf.layers.dropout(concat_vector, rate=0.3, training=True)
     # Feed to rnn
     rnn_input = tf.reshape(concat_vector, [rnn_paras["raw_batch_size"], rnn_paras["time_step"], rnn_paras["input_len"]])
-
-    with tf.variable_scope("rnn"):
-        result = myrnn(rnn_input, rnn_paras["input_len"], rnn_paras["output_len"], rnn_paras["raw_batch_size"], rnn_paras["time_step"], rnn_paras["state_len"])
+    result = myrnn(rnn_input, rnn_paras["input_len"], rnn_paras["output_len"], rnn_paras["raw_batch_size"], rnn_paras["time_step"], rnn_paras["state_len"])
 
     ''' Optimizer '''
-    loss = tf.reduce_mean(tf.square(reference - result))
-    # train_step = tf.train.AdamOptimizer(learning_rate).minimize(loss)
-    train_step = tf.train.AdagradOptimizer(learning_rate).minimize(loss)
+    loss = tf.reduce_mean(tf.abs(reference - result))
+    train_step = tf.train.AdamOptimizer(learning_rate).minimize(loss)
+    #train_step = tf.train.AdagradOptimizer(learning_rate).minimize(loss)
 
     ''' Show trainable variables '''
     variable_name = [v.name for v in tf.trainable_variables()]
@@ -250,8 +249,17 @@ if __name__ == '__main__':
 
     batch_size = rnn_paras["raw_batch_size"]
     batch_num = int((total_data_num - rnn_paras["time_step"]) / batch_size)  # issue
+
+    # set restore and save parameters
+    variables_to_restore = tf.contrib.framework.get_variables_to_restore(include=['encoder'])
+    restorer = tf.train.Saver(variables_to_restore)
+    variables_to_save = tf.contrib.framework.get_variables_to_restore(exclude=['rnn/state'])
+    saver = tf.train.Saver(variables_to_save)
+
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())  # initialze variables
+        restorer.restore(sess, "/home/ubuntu/chg_workspace/3dcnn/model/1900_autoencoder.ckpt")
+
         # start epoches
         for epoch in range(epoch_num):
             print "epoch: " + str(epoch)
@@ -278,4 +286,9 @@ if __name__ == '__main__':
                 plt.plot(range(results.shape[0]), results[:, 0])
                 plt.plot(range(label_batch.shape[0]), label_batch[:, 0])
                 plt.show()
+
+            if epoch % save_every_n_epoch == 0:
+                # save
+                saver.save(sess, '/home/ubuntu/chg_workspace/3dcnn/model/' + str(epoch) + '_cnn_rnn.ckpt')
+
 

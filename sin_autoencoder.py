@@ -123,22 +123,63 @@ def decoder(x, batch_size):
             return conv3
 
 
+def generate_sin_x_plus_y(number, side_dim, step, start_x, start_y):
+    """
+    Generate 3d cube data to fit sin(x+y) + cos(z)= f(sin(x_t0), sin(y_t0)...)
+
+    sin(x) and sin(y) for each slide
+
+    out_put:
+    data1: [number, side_dim, side_dim, side_dim, 1]
+    data2: [number, z_dim]
+    label: [number, 2]
+    """
+    x = start_x
+    y = start_y
+
+    data1 = []
+
+    for i in range(number):
+        sx = math.sin(x)
+        sy = math.sin(y)
+
+        # data1
+        cube = []
+        for j in range(side_dim):
+            if j % 2 == 0:
+                cube.append([[sx for m in range(side_dim)] for n in range(side_dim)])
+            else:
+                cube.append([[sy for m in range(side_dim)] for n in range(side_dim)])
+
+        data1.append(cube)
+
+        # update seed
+        x = x + step
+        y = y + step
+
+    return np.array(data1)
+
+
 if __name__ == '__main__':
     '''Random data generation'''
-    choice_value = [0.0, 0.143, 0.286, 0.429, 0.571, 0.714, 0.857, 1.0]  # from 0/7 to 7/7
-
-    data_num = 50
-
-    print "generating data... Approximate time: " + str(data_num * 2.8 / 60.0) + " minutes"
+    # choice_value = [0.0, 0.143, 0.286, 0.429, 0.571, 0.714, 0.857, 1.0]  # from 0/7 to 7/7
+    #
+    data_num = 30
+    #
+    # print "generating data... Approximate time: " + str(data_num * 2.8 / 60.0) + " minutes"
     dia = input_side_diamension
-    data_mat = [[[[[choice_value[random.randint(0, 7)]] for k in range(dia)] for j in range(dia)] for i in range(dia)] for n in range(data_num)]
+    # data_mat = [[[[[choice_value[random.randint(0, 7)]] for k in range(dia)] for j in range(dia)] for i in range(dia)] for n in range(data_num)]
+    #
+    # print "Data generation is completed!"
+    cube_dim = input_side_diamension
 
-    print "Data generation is completed!"
+    data1 = generate_sin_x_plus_y(data_num, cube_dim, 0.1, 0, 0.5)
+    data1 = data1.reshape(data_num, cube_dim, cube_dim, cube_dim, 1)
 
     '''Training'''
     x_ = tf.placeholder("float", shape=[None, dia, dia, dia, 1])
 
-    batch_size = 50
+    batch_size = 30
     learning_rate = 1e-4
 
     encode_vector = encoder(x_)
@@ -158,11 +199,11 @@ if __name__ == '__main__':
 
         for epoch in range(2000):
             for i in range(total_batch):
-                sess.run(train_step, feed_dict={x_: data_mat})  # training
+                sess.run(train_step, feed_dict={x_: data1})  # training
 
             print "epoch: " + str(epoch)
-            print('loss=%s' % sess.run(loss, feed_dict={x_: data_mat}))
-            if epoch % 2 == 0:
+            print('loss=%s' % sess.run(loss, feed_dict={x_: data1}))
+            if epoch % 100 == 0:
                 saver.save(sess, '/home/ubuntu/chg_workspace/3dcnn/model/' + str(epoch) + '_autoencoder.ckpt')
 
 
