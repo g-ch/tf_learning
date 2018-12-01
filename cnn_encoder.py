@@ -1,10 +1,18 @@
 import tensorflow as tf
-import matplotlib.pyplot as plt
 import numpy as np
 import math
-import random
+import sys
+import csv
 
 input_side_diamension = 64
+batch_size = 20
+learning_rate = 1e-4
+total_epoches = 500
+save_every_n_epoch = 50
+filename = "/home/ubuntu/chg_workspace/data/csvs/pcl_data_2018_11_30_21:07:37.csv"
+
+img_wid = input_side_diamension
+img_height = input_side_diamension
 
 device = {
     "gpu1": "0",
@@ -123,23 +131,87 @@ def decoder(x, batch_size):
             return conv3
 
 
+def generate_shuffled_array(start, stop, shuffle=True):
+    """
+    Give a length and return a shuffled one dimension array using data from start to stop, stop not included
+    Used as shuffled sequence
+    """
+    array = np.arange(start, stop)
+    if shuffle:
+        np.random.shuffle(array)
+    return array
+
+
+def get_bacth_step(seq, time_step, data):
+    """
+    get values of the seq in data(array), together with time_step back values
+    :param seq: sequence to get, 0 or positive integers in one dimention array
+    :param time_step: 2 at least
+    :param data: data to get, must be numpy array!!!, at least 2 dimension
+    :return: list [seq_size*time_step, data_size:] typical(if values in seq are all valid).
+    """
+    result = []
+    step = time_step - 1
+    for i in range(seq.shape[0]):
+        for j in range(-step, 1, 1):
+            result.append(data[seq[i] + j, :].tolist())
+
+    return np.array(result)
+
+
+def get_bacth(seq, data):
+    """
+    get values of the seq in data(array), together with time_step back values
+    :param seq: sequence to get, 0 or positive integers in one dimention array
+    :param data: data to get, must be numpy array!!!, at least 2 dimension
+    :return: list [seq_size*time_step, data_size:] typical(if values in seq are all valid).
+    """
+    result = []
+    for i in range(seq.shape[0]):
+        result.append(data[seq[i], :].tolist())
+
+    return np.array(result)
+
+
+def read_pcl(data,filename):
+    maxInt = sys.maxsize
+    decrement = True
+    while decrement:
+        # decrease the maxInt value by factor 10
+        # as long as the OverflowError occurs.
+        decrement = False
+        try:
+            csv.field_size_limit(maxInt)
+            with open(filename, mode='r') as csvfile:
+                csv_reader = csv.reader(csvfile, delimiter=',', quotechar='|')
+                i_row = 0
+                for row in csv_reader:
+                    for i in range(img_wid):
+                        for j in range(img_wid):
+                            for k in range(img_height):
+                                data[i_row, i, j, k, 0] = row[i * img_wid + j * img_wid + k * img_height]
+                    i_row = i_row + 1
+        except OverflowError:
+            maxInt = int(maxInt / 10)
+            decrement = True
+
+    return True
+
+
 if __name__ == '__main__':
-    '''Random data generation'''
-    choice_value = [0.0, 0.143, 0.286, 0.429, 0.571, 0.714, 0.857, 1.0]  # from 0/7 to 7/7
+    '''Data reading'''
+    print "Reading data..."
+    clouds = open(filename, "r")
+    img_num = len(clouds.readlines())
+    clouds.close()
+    data_mat = np.ones([img_num, img_wid, img_wid, img_height, 1])
+    read_pcl(data_mat, filename)
 
-    data_num = 50
-
-    print "generating data... Approximate time: " + str(data_num * 2.8 / 60.0) + " minutes"
-    dia = input_side_diamension
-    data_mat = [[[[[choice_value[random.randint(0, 7)]] for k in range(dia)] for j in range(dia)] for i in range(dia)] for n in range(data_num)]
-
-    print "Data generation is completed!"
+    print "Data reading is completed!"
 
     '''Training'''
+    dia = input_side_diamension
     x_ = tf.placeholder("float", shape=[None, dia, dia, dia, 1])
-
-    batch_size = 50
-    learning_rate = 1e-4
 
     encode_vector = encoder(x_)
 
@@ -154,15 +226,28 @@ if __name__ == '__main__':
         saver = tf.train.Saver()
         sess.run(tf.global_variables_initializer())
 
-        total_batch = int(data_num / batch_size)
+        total_data_num = data_mat.shape[0]
+        print "get " + str(total_data_num) + " data"
 
-        for epoch in range(2000):
-            for i in range(total_batch):
-                sess.run(train_step, feed_dict={x_: data_mat})  # training
+        for epoch in range(total_epoches):
 
             print "epoch: " + str(epoch)
-            print('loss=%s' % sess.run(loss, feed_dict={x_: data_mat}))
-            if epoch % 2 == 0:
-                saver.save(sess, '/home/ubuntu/chg_workspace/3dcnn/model/' + str(epoch) + '_autoencoder.ckpt')
+            # get a random sequence for this epoch
+            sequence = generate_shuffled_array(0, total_data_num, shuffle=True)
+            batch_num = int(total_data_num / batch_size)
+            # start batches
+            for batch_seq in range(batch_num):
+                print "batch:" + str(batch_seq)
+                # get data for this batch
+                start_position = batch_seq * batch_size
+                end_position = (batch_seq + 1) * batch_size
+                batch_data = get_bacth(sequence[start_position:end_position], data_mat)
+
+                sess.run(train_step, feed_dict={x_: batch_data})  # training
+
+            print "epoch: " + str(epoch)
+            print('loss=%s' % sess.run(loss, feed_dict={x_: batch_data}))
+            if (epoch+1) % save_every_n_epoch == 0:
+                saver.save(sess, '/home/ubuntu/chg_workspace/3dcnn/model/'+'simulation_autoencoder_'+str(epoch)+'.ckpt')
 
 

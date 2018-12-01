@@ -1,30 +1,41 @@
 import tensorflow as tf
 import math
 import numpy as np
-import random
 import matplotlib.pyplot as plt
+import sys
+import csv
 
 ''' Parameters for training '''
 ''' Batch size defined in Parameters for RNN '''
-total_data_num = 30
+total_data_num = 0
 input_side_dimension = 64
 learning_rate = 1e-4
 epoch_num = 1000
-save_every_n_epoch = 10
+save_every_n_epoch = 20
+
+states_num_one_line = 11
+labels_num_one_line = 4
+
+clouds_filename = "/home/ubuntu/chg_workspace/data/csvs/1_1/pcl_data_2018_12_01_11:03:07.csv"
+states_filename = "/home/ubuntu/chg_workspace/data/csvs/1_1/uav_data_2018_12_01_11:03:07.csv"
+labels_filename = "/home/ubuntu/chg_workspace/data/csvs/1_1/label_data_2018_12_01_11:03:07.csv"
+
+img_wid = input_side_dimension
+img_height = input_side_dimension
 
 ''' Parameters for RNN'''
 rnn_paras = {
     "raw_batch_size": 20,
-    "time_step": 5,
+    "time_step": 4,
     "state_len": 128,
-    "input_len": 2176,
+    "input_len": 2304,
     "output_len": 2
 }
 
 ''' Parameters for concat values'''
 concat_paras = {
     "dim1": 2048,  # should be the same as encoder out dim
-    "dim2": 128  # dim1 + dim2 should be input_len of the rnn, for line vector
+    "dim2": 256  # dim1 + dim2 should be input_len of the rnn, for line vector
 }
 
 ''' Parameters for CNN encoder'''
@@ -197,25 +208,106 @@ def get_bacth(seq, data):
     return np.array(result)
 
 
+def read_pcl(data, filename):
+    maxInt = sys.maxsize
+    decrement = True
+    while decrement:
+        # decrease the maxInt value by factor 10
+        # as long as the OverflowError occurs.
+        decrement = False
+        try:
+            csv.field_size_limit(maxInt)
+            with open(filename, mode='r') as csvfile:
+                csv_reader = csv.reader(csvfile, delimiter=',', quotechar='|')
+                i_row = 0
+                for row in csv_reader:
+                    for i in range(img_wid):
+                        for j in range(img_wid):
+                            for k in range(img_height):
+                                data[i_row, i, j, k, 0] = row[i * img_wid + j * img_wid + k * img_height]
+                    i_row = i_row + 1
+        except OverflowError:
+            maxInt = int(maxInt / 10)
+            decrement = True
+
+    return True
+
+
+def read_others(data, filename, num_one_line):
+    maxInt = sys.maxsize
+    decrement = True
+    while decrement:
+        # decrease the maxInt value by factor 10
+        # as long as the OverflowError occurs.
+        decrement = False
+        try:
+            csv.field_size_limit(maxInt)
+            with open(filename, mode='r') as csvfile:
+                csv_reader = csv.reader(csvfile, delimiter=',', quotechar='|')
+                i_row = 0
+                for row in csv_reader:
+                    for i in range(num_one_line):
+                        data[i_row, i] = row[i]
+                    i_row = i_row + 1
+        except OverflowError:
+            maxInt = int(maxInt / 10)
+            decrement = True
+
+    return True
+
+
+class Networkerror(RuntimeError):
+    """
+    Error print
+    """
+    def __init__(self, arg):
+        self.args = arg
+
+
 if __name__ == '__main__':
     ''' Make some training values '''
-    # total data number
-    data_num = total_data_num
+    print "Reading data..."
+    # Read clouds
+    clouds = open(clouds_filename, "r")
+    img_num = len(clouds.readlines())
+    clouds.close()
+    data_mat = np.ones([img_num, img_wid, img_wid, img_height, 1])
+    read_pcl(data_mat, clouds_filename)
 
-    print "generating data... "
-    cube_dim = input_side_dimension
+    # Read states
+    states = open(states_filename, "r")
+    states_num = len(states.readlines())
+    states.close()
+    if states_num != img_num:
+        raise Networkerror("states file mismatch!")
+    states_mat = np.zeros([states_num, states_num_one_line])
+    read_others(states_mat, states_filename, states_num_one_line)
 
-    # create a dataset, validate
-    data1, data2, label = generate_sin_x_plus_y(data_num, cube_dim, concat_paras["dim2"], rnn_paras["output_len"], 0.2, 0, 0.5, 2)
-    data1 = data1.reshape(data_num, cube_dim, cube_dim, cube_dim, 1)
+    # Read labels
+    labels = open(labels_filename, "r")
+    labels_num = len(labels.readlines())
+    labels.close()
+    if labels_num != states_num:
+        raise Networkerror("labels file mismatch!")
+    labels_mat = np.zeros([labels_num, labels_num_one_line])
+    read_others(labels_mat, labels_filename, labels_num_one_line)
 
-    # batch get example
-    # batch_size = rnn_paras["raw_batch_size"]
-    # data1_batch = get_bacth(sequence[0:batch_size], rnn_paras["time_step"], data1)
-    # data2_batch = get_bacth(sequence[0:batch_size], rnn_paras["time_step"], data2)
-    # label_batch = get_bacth(sequence[0:batch_size], 1, label)
+    ''' Choose useful states and labels '''
+    compose_num = [256]
+    # check total number
+    num_total = 0
+    for num_x in compose_num:
+        num_total = num_total + num_x
+    if num_total != concat_paras["dim2"]:
+        raise Networkerror("compose_num does not match concat_paras!")
+    # concat for input2
+    states_input = np.concatenate([np.reshape(states_mat[:, 10], [states_num, 1]) for i in range(compose_num[0])], axis=1)  # vel_odom
 
-    print "Data generated!"
+    labels_ref = labels_mat[:, 0:2]  # vel_cmd, angular_cmd
+
+    total_data_num = img_num
+
+    print "Data reading is completed!"
 
     ''' Graph building '''
 
@@ -238,7 +330,6 @@ if __name__ == '__main__':
     ''' Optimizer '''
     loss = tf.reduce_mean(tf.square(reference - result))
     train_step = tf.train.AdamOptimizer(learning_rate).minimize(loss)
-    #train_step = tf.train.AdagradOptimizer(learning_rate).minimize(loss)
 
     ''' Show trainable variables '''
     variable_name = [v.name for v in tf.trainable_variables()]
@@ -258,22 +349,22 @@ if __name__ == '__main__':
 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())  # initialze variables
-        restorer.restore(sess, "/home/ubuntu/chg_workspace/3dcnn/model/500_autoencoder.ckpt")
+        restorer.restore(sess, "/home/ubuntu/chg_workspace/3dcnn/model/simulation_autoencoder_450.ckpt")
 
         # start epoches
         for epoch in range(epoch_num):
             print "epoch: " + str(epoch)
             # get a random sequence for this epoch
-            sequence = generate_shuffled_array(rnn_paras["time_step"] - 1, total_data_num, shuffle=False)
+            sequence = generate_shuffled_array(rnn_paras["time_step"] - 1, total_data_num, shuffle=True)
             # start batches
             for batch_seq in range(batch_num):
                 print "batch" + str(batch_seq)
                 # get data for this batch
                 start_position = batch_seq * batch_size
                 end_position = (batch_seq+1) * batch_size
-                data1_batch = get_bacth_step(sequence[start_position:end_position], rnn_paras["time_step"], data1)
-                data2_batch = get_bacth_step(sequence[start_position:end_position], rnn_paras["time_step"], data2)
-                label_batch = get_bacth(sequence[start_position:end_position], label)
+                data1_batch = get_bacth_step(sequence[start_position:end_position], rnn_paras["time_step"], data_mat)
+                data2_batch = get_bacth_step(sequence[start_position:end_position], rnn_paras["time_step"], states_input)
+                label_batch = get_bacth(sequence[start_position:end_position], labels_ref)
 
                 # train
                 sess.run(train_step, feed_dict={cube_data: data1_batch, line_data: data2_batch, reference: label_batch})  # training
@@ -289,6 +380,6 @@ if __name__ == '__main__':
 
             if epoch % save_every_n_epoch == 0:
                 # save
-                saver.save(sess, '/home/ubuntu/chg_workspace/3dcnn/model/model_cnn_rnn_timestep5/' + str(epoch) + '_cnn_rnn_2.ckpt')
+                saver.save(sess, '/home/ubuntu/chg_workspace/3dcnn/model/model_cnn_rnn_timestep5/'+'simulation_cnn_rnn'+str(epoch)+'.ckpt')
 
 
