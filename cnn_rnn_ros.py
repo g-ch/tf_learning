@@ -1,9 +1,12 @@
 import tensorflow as tf
 import math
 import numpy as np
-import matplotlib.pyplot as plt
-import sys
-import csv
+import rospy
+import sensor_msgs.point_cloud2 as pc2
+from sensor_msgs.msg import PointCloud2
+from std_msgs.msg import Float64
+from nav_msgs.msg import Odometry
+from geometry_msgs.msg import Twist
 
 
 ''' Parameters for training '''
@@ -11,14 +14,7 @@ import csv
 test_data_num = 400
 input_side_dimension = 64
 
-states_num_one_line = 11
-labels_num_one_line = 4
-
-clouds_filename = "/home/ubuntu/chg_workspace/data/csvs/1_1/pcl_data_2018_12_01_11:03:07.csv"
-states_filename = "/home/ubuntu/chg_workspace/data/csvs/1_1/uav_data_2018_12_01_11:03:07.csv"
-labels_filename = "/home/ubuntu/chg_workspace/data/csvs/1_1/label_data_2018_12_01_11:03:07.csv"
-
-img_wid = input_side_dimension
+img_width = input_side_dimension
 img_height = input_side_dimension
 
 ''' Parameters for RNN'''
@@ -52,6 +48,15 @@ pooled_side_len1 = input_side_dimension
 pooled_side_len2 = int(input_side_dimension / (encoder_para["pool1"] * encoder_para["stride1"]))
 
 pooled_size = int(input_side_dimension * input_side_dimension * input_side_dimension * encoder_para["channel2"] / math.pow(encoder_para["pool1"]*encoder_para["pool2"]*encoder_para["stride1"], 3))
+
+''' Parameters for ros node '''
+new_msg_received = False
+
+position_odom_x = -1
+position_odom_y = -1
+position_odom_z = -1
+yaw_delt = 0.0
+pcl_arr = np.ones(dtype=np.float32, shape=[1, img_width, img_width, img_height, 1])
 
 
 def myrnn_test(x, state_last, input_len, output_len, state_len):
@@ -113,54 +118,6 @@ def encoder(x):
             return max_pool2
 
 
-def read_pcl(data, filename):
-    maxInt = sys.maxsize
-    decrement = True
-    while decrement:
-        # decrease the maxInt value by factor 10
-        # as long as the OverflowError occurs.
-        decrement = False
-        try:
-            csv.field_size_limit(maxInt)
-            with open(filename, mode='r') as csvfile:
-                csv_reader = csv.reader(csvfile, delimiter=',', quotechar='|')
-                i_row = 0
-                for row in csv_reader:
-                    for i in range(img_wid):
-                        for j in range(img_wid):
-                            for k in range(img_height):
-                                data[i_row, i, j, k, 0] = row[i * img_wid + j * img_wid + k * img_height]
-                    i_row = i_row + 1
-        except OverflowError:
-            maxInt = int(maxInt / 10)
-            decrement = True
-
-    return True
-
-
-def read_others(data, filename, num_one_line):
-    maxInt = sys.maxsize
-    decrement = True
-    while decrement:
-        # decrease the maxInt value by factor 10
-        # as long as the OverflowError occurs.
-        decrement = False
-        try:
-            csv.field_size_limit(maxInt)
-            with open(filename, mode='r') as csvfile:
-                csv_reader = csv.reader(csvfile, delimiter=',', quotechar='|')
-                i_row = 0
-                for row in csv_reader:
-                    for i in range(num_one_line):
-                        data[i_row, i] = row[i]
-                    i_row = i_row + 1
-        except OverflowError:
-            maxInt = int(maxInt / 10)
-            decrement = True
-
-    return True
-
-
 class Networkerror(RuntimeError):
     """
     Error print
@@ -169,49 +126,48 @@ class Networkerror(RuntimeError):
         self.args = arg
 
 
+def refillPclArr(arr, point_x, point_y, point_z, intensity, odom_x, odom_y, odom_z):
+    x_tmp = int((point_x - odom_x) * 5 + 0.5)
+    y_tmp = int((point_y - odom_y) * 5 + 0.5)
+    z_tmp = int((point_z - odom_z) * 5 + 0.5)
+
+    if abs(x_tmp) < img_width/2 and abs(y_tmp) < img_width/2 and abs(z_tmp) < img_height/2:
+        x_tmp = int(x_tmp + img_width / 2)
+        y_tmp = int(y_tmp + img_width / 2)
+        z_tmp = int(z_tmp + img_height / 2)
+        arr[0, x_tmp, y_tmp, z_tmp, 0] = intensity
+
+    return arr
+
+
+def callBackPCL(point):
+    global pcl_arr
+    pcl_arr = np.ones(dtype=np.float32, shape=[1, img_width, img_width, img_height, 1])
+    for p in pc2.read_points(point, field_names=("x", "y", "z", "intensity"), skip_nans=True):
+        pcl_arr = refillPclArr(pcl_arr, p[0], p[1], p[2], p[3]/7.0, position_odom_x, position_odom_y, position_odom_z)
+    global new_msg_received
+    new_msg_received = True
+
+
+def callBackDeltYaw(data):
+    global yaw_delt
+    yaw_delt = data.data
+
+
+def callBackOdom(data):
+    global position_odom_x, position_odom_y
+    position_odom_x, position_odom_y, position_odom_z = \
+        data.pose.pose.position.x, data.pose.pose.position.y, data.pose.pose.position.z
+
+
 if __name__ == '__main__':
-    ''' Make some training values '''
-    print "Reading data..."
-    # Read clouds
-    clouds = open(clouds_filename, "r")
-    img_num = len(clouds.readlines())
-    clouds.close()
-    data_mat = np.ones([img_num, img_wid, img_wid, img_height, 1])
-    read_pcl(data_mat, clouds_filename)
 
-    # Read states
-    states = open(states_filename, "r")
-    states_num = len(states.readlines())
-    states.close()
-    if states_num != img_num:
-        raise Networkerror("states file mismatch!")
-    states_mat = np.zeros([states_num, states_num_one_line])
-    read_others(states_mat, states_filename, states_num_one_line)
-
-    # Read labels
-    labels = open(labels_filename, "r")
-    labels_num = len(labels.readlines())
-    labels.close()
-    if labels_num != states_num:
-        raise Networkerror("labels file mismatch!")
-    labels_mat = np.zeros([labels_num, labels_num_one_line])
-    read_others(labels_mat, labels_filename, labels_num_one_line)
-
-    ''' Choose useful states and labels '''
-    compose_num = [256]
-    # check total number
-    num_total = 0
-    for num_x in compose_num:
-        num_total = num_total + num_x
-    if num_total != concat_paras["dim2"]:
-        raise Networkerror("compose_num does not match concat_paras!")
-    # concat for input2
-    states_input = np.concatenate([np.reshape(states_mat[:, 10], [states_num, 1]) for i in range(compose_num[0])],
-                                  axis=1)  # delt_yaw
-
-    labels_ref = labels_mat[:, 0:2]  # vel_cmd, angular_cmd
-
-    print "Data reading is completed!"
+    rospy.init_node('predict', anonymous=True)
+    rospy.Subscriber('/ring_buffer/cloud_semantic', PointCloud2, callBackPCL)
+    rospy.Subscriber("/radar/delt_yaw", Float64, callBackDeltYaw)
+    rospy.Subscriber("/odom", Odometry, callBackOdom)
+    cmd_pub = rospy.Publisher("/mobile_base/commands/velocity", Twist, queue_size=10)
+    move_cmd = Twist()
 
     ''' Graph building '''
     cube_data = tf.placeholder("float", name="cube_data", shape=[1, input_side_dimension, input_side_dimension, input_side_dimension, 1])
@@ -234,27 +190,30 @@ if __name__ == '__main__':
     restorer = tf.train.Saver(variables_to_restore)
 
     cube_dim = input_side_dimension
+    rate = rospy.Rate(100)  # 100hz
+
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())  # initialze variables
         restorer.restore(sess, "/home/ubuntu/chg_workspace/3dcnn/model/model_cnn_rnn_timestep5/simulation_cnn_rnn200.ckpt")
         state_data_give = np.zeros([1, rnn_paras["state_len"]])
 
-        results_to_draw = []
-        for i in range(test_data_num):
-            data1_to_feed = data_mat[i, :].reshape([1, cube_dim, cube_dim, cube_dim, 1])
-            data2_to_feed = states_input[i, :].reshape([1, concat_paras["dim2"]])
+        while not rospy.is_shutdown():
+            if new_msg_received:
+                data2_to_feed = np.ones([1, 256]) * yaw_delt
+                results = sess.run(result, feed_dict={cube_data: pcl_arr, line_data: data2_to_feed,
+                                                      state_data: state_data_give})
+                move_cmd.linear.x = results[0, 0] * 0.5
+                move_cmd.angular.z = -results[0, 1] * 1.2
+                cmd_pub.publish(move_cmd)
 
-            results = sess.run(result, feed_dict={cube_data: data1_to_feed, line_data: data2_to_feed, state_data: state_data_give})
-            state_data_give = sess.run(state_returned, feed_dict={cube_data: data1_to_feed, line_data: data2_to_feed, state_data: state_data_give})
+                print results
+                state_data_give = sess.run(state_returned,
+                                           feed_dict={cube_data: pcl_arr, line_data: data2_to_feed,
+                                                      state_data: state_data_give})
+                new_msg_received = False
+            rate.sleep()
 
-            results_to_draw.append(results)
-            print "result: ", results, "label: ", labels_ref[i]
 
-        results_to_draw = np.array(results_to_draw)
-        plt.plot(range(test_data_num), labels_ref[:test_data_num, 0])
-        plt.plot(range(results_to_draw.shape[0]), results_to_draw[:, 0, 0])
-        plt.plot(range(test_data_num), labels_ref[:test_data_num, 1])
-        plt.plot(range(results_to_draw.shape[0]), results_to_draw[:, 0, 1])
-        plt.show()
+
 
 

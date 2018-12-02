@@ -301,7 +301,7 @@ if __name__ == '__main__':
     if num_total != concat_paras["dim2"]:
         raise Networkerror("compose_num does not match concat_paras!")
     # concat for input2
-    states_input = np.concatenate([np.reshape(states_mat[:, 10], [states_num, 1]) for i in range(compose_num[0])], axis=1)  # vel_odom
+    states_input = np.concatenate([np.reshape(states_mat[:, 10], [states_num, 1]) for i in range(compose_num[0])], axis=1)  # delt_yaw
 
     labels_ref = labels_mat[:, 0:2]  # vel_cmd, angular_cmd
 
