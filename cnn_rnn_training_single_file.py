@@ -16,24 +16,17 @@ save_every_n_epoch = 20
 states_num_one_line = 11
 labels_num_one_line = 4
 
-path = "/home/ubuntu/chg_workspace/data/csvs"
-clouds_filename = ["/chg_route1_trial1/pcl_data_2018_12_03_11:34:18.csv", "/hzy_route1_trial1/pcl_data_2018_12_03_11:26:38.csv"]
-states_filename = ["/chg_route1_trial1/uav_data_2018_12_03_11:34:18.csv", "/hzy_route1_trial1/uav_data_2018_12_03_11:26:38.csv"]
-labels_filename = ["/chg_route1_trial1/label_data_2018_12_03_11:34:18.csv", "/hzy_route1_trial1/label_data_2018_12_03_11:26:38.csv"]
+clouds_filename = "/home/ubuntu/chg_workspace/data/csvs/1_1/pcl_data_2018_12_01_11:03:07.csv"
+states_filename = "/home/ubuntu/chg_workspace/data/csvs/1_1/uav_data_2018_12_01_11:03:07.csv"
+labels_filename = "/home/ubuntu/chg_workspace/data/csvs/1_1/label_data_2018_12_01_11:03:07.csv"
 
 img_wid = input_side_dimension
 img_height = input_side_dimension
 
-''' Parameters for Computer'''
-device = {
-    "gpu1": "0",
-    "gpu2": "1"
-}
-
 ''' Parameters for RNN'''
 rnn_paras = {
-    "raw_batch_size": 30,
-    "time_step": 5,
+    "raw_batch_size": 20,
+    "time_step": 4,
     "state_len": 128,
     "input_len": 2304,
     "output_len": 2
@@ -79,27 +72,24 @@ def myrnn(x, input_len, output_len, raw_batch_size, time_step, state_len):
 
         state = tf.get_variable("state", [raw_batch_size, state_len], trainable=False, initializer=tf.constant_initializer(0.0))
 
-        with tf.device("/gpu:" + device["gpu2"]):
-            for seq in range(time_step):
-                x_temp = x[:, seq, :]  # might not be right
-                state = tf.nn.tanh(tf.matmul(state, u) + tf.matmul(x_temp, w))  # hidden layer activate function
+        for seq in range(time_step):
+            x_temp = x[:, seq, :]  # might not be right
+            state = tf.nn.tanh(tf.matmul(state, u) + tf.matmul(x_temp, w))  # hidden layer activate function
 
-            return tf.nn.tanh(tf.matmul(state, v) + b)  # output layer activate function
+        return tf.nn.tanh(tf.matmul(state, v) + b)  # output layer activate function
 
 
 def conv3d_relu(x, kernel_shape, bias_shape, strides):
     """ 3D convolution For 3D CNN encoder """
     weights = tf.get_variable("weights_con", kernel_shape)  # truncated_normal_initializer(stddev=0.1))
     biases = tf.get_variable("bias_con", bias_shape)
-    with tf.device("/gpu:" + device["gpu1"]):
-        conv = tf.nn.conv3d(x, weights, strides=strides, padding="SAME")
-        return tf.nn.relu(conv + biases)
+    conv = tf.nn.conv3d(x, weights, strides=strides, padding="SAME")
+    return tf.nn.relu(conv + biases)
 
 
 def max_pool(x, kernel_shape, strides):
     """ 3D convolution For 3D CNN encoder """
-    with tf.device("/gpu:" + device["gpu1"]):
-        return tf.nn.max_pool3d(x, ksize=kernel_shape, strides=strides, padding='SAME')
+    return tf.nn.max_pool3d(x, ksize=kernel_shape, strides=strides, padding='SAME')
 
 
 def encoder(x):
@@ -182,39 +172,6 @@ def generate_shuffled_array(start, stop, shuffle=True):
     Used as shuffled sequence
     """
     array = np.arange(start, stop)
-    if shuffle:
-        np.random.shuffle(array)
-    return array
-
-
-def generate_shuffled_arrays_multifiles(start, stop, shuffle=True):
-    """
-    Give a length and return a shuffled one dimension array using data from start to stop, stop not included
-    Used as shuffled sequence
-    :param start: list of start positions in files, commonly (step-1)
-    :param stop: list of end positions in files, commonly (data number)
-    :param shuffle: if shuffle
-    :return: one array
-    """
-    array = []
-    start_this = 0
-    stop_this = 0
-    start_i = 0
-    stop_i =0
-
-    for i in range(len(start)):
-        start_i = start_this + start[i]
-        stop_i = stop_this + stop[i]
-
-        array_this = np.arange(start_i, stop_i)
-        if i == 0:
-            array = array_this
-        else:
-            array = np.concatenate([array, array_this], axis=0)
-
-        start_this = start_this + stop[i]
-        stop_this = stop_this + stop[i]
-
     if shuffle:
         np.random.shuffle(array)
     return array
@@ -310,82 +267,47 @@ class Networkerror(RuntimeError):
 if __name__ == '__main__':
     ''' Make some training values '''
     print "Reading data..."
+    # Read clouds
+    clouds = open(clouds_filename, "r")
+    img_num = len(clouds.readlines())
+    clouds.close()
+    data_mat = np.ones([img_num, img_wid, img_wid, img_height, 1])
+    read_pcl(data_mat, clouds_filename)
 
-    data_mat = []
-    states_input = []
-    labels_ref = []
+    # Read states
+    states = open(states_filename, "r")
+    states_num = len(states.readlines())
+    states.close()
+    if states_num != img_num:
+        raise Networkerror("states file mismatch!")
+    states_mat = np.zeros([states_num, states_num_one_line])
+    read_others(states_mat, states_filename, states_num_one_line)
 
-    data_num_in_files = []
-    total_data_num = 0
+    # Read labels
+    labels = open(labels_filename, "r")
+    labels_num = len(labels.readlines())
+    labels.close()
+    if labels_num != states_num:
+        raise Networkerror("labels file mismatch!")
+    labels_mat = np.zeros([labels_num, labels_num_one_line])
+    read_others(labels_mat, labels_filename, labels_num_one_line)
 
-    for file_seq in range(len(clouds_filename)):
-        # Read clouds
-        cloud_filename_this = str(path + clouds_filename[file_seq])
-        clouds = open(cloud_filename_this, "r")
-        img_num = len(clouds.readlines())
-        clouds.close()
-        data_mat_this = np.ones([img_num, img_wid, img_wid, img_height, 1])
-        read_pcl(data_mat_this, cloud_filename_this)
+    ''' Choose useful states and labels '''
+    compose_num = [256]
+    # check total number
+    num_total = 0
+    for num_x in compose_num:
+        num_total = num_total + num_x
+    if num_total != concat_paras["dim2"]:
+        raise Networkerror("compose_num does not match concat_paras!")
+    # concat for input2
+    states_input = np.concatenate([np.reshape(states_mat[:, 10], [states_num, 1]) for i in range(compose_num[0])], axis=1)  # delt_yaw
 
-        # Read states
-        state_filename_this = str(path + states_filename[file_seq])
-        states = open(state_filename_this, "r")
-        states_num = len(states.readlines())
-        states.close()
-        if states_num != img_num:
-            raise Networkerror("states file mismatch!")
-        states_mat_this = np.zeros([states_num, states_num_one_line])
-        read_others(states_mat_this, state_filename_this, states_num_one_line)
+    labels_ref = labels_mat[:, 0:2]  # vel_cmd, angular_cmd
 
-        # Read labels
-        label_filename_this = str(path + labels_filename[file_seq])
-        labels = open(label_filename_this, "r")
-        labels_num = len(labels.readlines())
-        labels.close()
-        if labels_num != states_num:
-            raise Networkerror("labels file mismatch!")
-        labels_mat_this = np.zeros([labels_num, labels_num_one_line])
-        read_others(labels_mat_this, label_filename_this, labels_num_one_line)
-
-        ''' Choose useful states and labels '''
-        compose_num = [200, 28, 28]
-        # check total number
-        num_total = 0
-        for num_x in compose_num:
-            num_total = num_total + num_x
-        if num_total != concat_paras["dim2"]:
-            raise Networkerror("compose_num does not match concat_paras!")
-        # concat for input2
-        states_input_delt_yaw = np.concatenate([np.reshape(states_mat_this[:, 10], [states_num, 1]) for i in range(compose_num[0])], axis=1)  # delt_yaw
-        states_input_linear_vel = np.concatenate([np.reshape(states_mat_this[:, 2], [states_num, 1]) for i in range(compose_num[1])], axis=1)  # linear vel
-        states_input_angular_vel = np.concatenate([np.reshape(states_mat_this[:, 3], [states_num, 1]) for i in range(compose_num[2])], axis=1)  # angular vel
-
-        states_input_this = np.concatenate([states_input_delt_yaw, states_input_linear_vel, states_input_angular_vel], axis=1)
-
-        labels_ref_this = labels_mat_this[:, 0:2]  # vel_cmd, angular_cmd
-
-        total_data_num = total_data_num + img_num  # total pointclouds number
-        data_num_in_files.append(img_num)
-
-        # concat for all files
-        if file_seq == 0:
-            data_mat = data_mat_this
-            states_input = states_input_this
-            labels_ref = labels_ref_this
-        else:
-            data_mat = np.concatenate([data_mat, data_mat_this], axis=0)
-            states_input = np.concatenate([states_input, states_input_this], axis=0)
-            labels_ref = np.concatenate([labels_ref, labels_ref_this], axis=0)
+    total_data_num = img_num
 
     print "Data reading is completed!"
-
-    ''' Calculate start and stop position for training list '''
-    start_position_list = []
-    stop_position_list = []
-
-    for file_seq in range(len(clouds_filename)):
-        start_position_list.append(rnn_paras["time_step"] - 1)
-        stop_position_list.append(data_num_in_files[file_seq])
 
     ''' Graph building '''
 
@@ -433,9 +355,7 @@ if __name__ == '__main__':
         for epoch in range(epoch_num):
             print "epoch: " + str(epoch)
             # get a random sequence for this epoch
-            # sequence = generate_shuffled_array(rnn_paras["time_step"] - 1, total_data_num, shuffle=True)
-            sequence = generate_shuffled_arrays_multifiles(start_position_list, stop_position_list, shuffle=True)
-
+            sequence = generate_shuffled_array(rnn_paras["time_step"] - 1, total_data_num, shuffle=True)
             # start batches
             for batch_seq in range(batch_num):
                 print "batch" + str(batch_seq)
