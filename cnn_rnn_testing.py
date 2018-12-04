@@ -14,16 +14,16 @@ input_side_dimension = 64
 states_num_one_line = 11
 labels_num_one_line = 4
 
-clouds_filename = "/home/ubuntu/chg_workspace/data/csvs/1_1/pcl_data_2018_12_01_11:03:07.csv"
-states_filename = "/home/ubuntu/chg_workspace/data/csvs/1_1/uav_data_2018_12_01_11:03:07.csv"
-labels_filename = "/home/ubuntu/chg_workspace/data/csvs/1_1/label_data_2018_12_01_11:03:07.csv"
+clouds_filename = "/home/ubuntu/chg_workspace/data/csvs/chg_route1_trial1/pcl_data_2018_12_03_11:34:18.csv"
+states_filename = "/home/ubuntu/chg_workspace/data/csvs/chg_route1_trial1/uav_data_2018_12_03_11:34:18.csv"
+labels_filename = "/home/ubuntu/chg_workspace/data/csvs/chg_route1_trial1/label_data_2018_12_03_11:34:18.csv"
 
 img_wid = input_side_dimension
 img_height = input_side_dimension
 
 ''' Parameters for RNN'''
 rnn_paras = {
-    "time_step": 4,
+    "time_step": 5,
     "state_len": 128,
     "input_len": 2304,
     "output_len": 2
@@ -198,7 +198,18 @@ if __name__ == '__main__':
     read_others(labels_mat, labels_filename, labels_num_one_line)
 
     ''' Choose useful states and labels '''
-    compose_num = [256]
+    # compose_num = [256]
+    # # check total number
+    # num_total = 0
+    # for num_x in compose_num:
+    #     num_total = num_total + num_x
+    # if num_total != concat_paras["dim2"]:
+    #     raise Networkerror("compose_num does not match concat_paras!")
+    # # concat for input2
+    # states_input = np.concatenate([np.reshape(states_mat[:, 10], [states_num, 1]) for i in range(compose_num[0])],
+    #                               axis=1)  # delt_yaw
+
+    compose_num = [200, 28, 28]
     # check total number
     num_total = 0
     for num_x in compose_num:
@@ -206,8 +217,15 @@ if __name__ == '__main__':
     if num_total != concat_paras["dim2"]:
         raise Networkerror("compose_num does not match concat_paras!")
     # concat for input2
-    states_input = np.concatenate([np.reshape(states_mat[:, 10], [states_num, 1]) for i in range(compose_num[0])],
-                                  axis=1)  # delt_yaw
+    states_input_delt_yaw = np.concatenate(
+        [np.reshape(states_mat[:, 10], [states_num, 1]) for i in range(compose_num[0])], axis=1)  # delt_yaw
+    states_input_linear_vel = np.concatenate(
+        [np.reshape(states_mat[:, 2], [states_num, 1]) for i in range(compose_num[1])], axis=1)  # linear vel
+    states_input_angular_vel = np.concatenate(
+        [np.reshape(states_mat[:, 3], [states_num, 1]) for i in range(compose_num[2])], axis=1)  # angular vel
+
+    states_input = np.concatenate([states_input_delt_yaw, states_input_linear_vel, states_input_angular_vel], axis=1)
+
 
     labels_ref = labels_mat[:, 0:2]  # vel_cmd, angular_cmd
 
@@ -251,10 +269,10 @@ if __name__ == '__main__':
             print "result: ", results, "label: ", labels_ref[i]
 
         results_to_draw = np.array(results_to_draw)
-        plt.plot(range(test_data_num), labels_ref[:test_data_num, 0])
-        plt.plot(range(results_to_draw.shape[0]), results_to_draw[:, 0, 0])
-        plt.plot(range(test_data_num), labels_ref[:test_data_num, 1])
-        plt.plot(range(results_to_draw.shape[0]), results_to_draw[:, 0, 1])
+        plt.plot(range(test_data_num), labels_ref[:test_data_num, 0], color='r')
+        plt.plot(range(results_to_draw.shape[0]), results_to_draw[:, 0, 0], color='b')
+        plt.plot(range(test_data_num), labels_ref[:test_data_num, 1], color='g')
+        plt.plot(range(results_to_draw.shape[0]), results_to_draw[:, 0, 1], color='m')
         plt.show()
 
 

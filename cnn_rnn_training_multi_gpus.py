@@ -1,17 +1,20 @@
 import tensorflow as tf
 import math
 import numpy as np
+import random
 import matplotlib.pyplot as plt
 import sys
 import csv
+import time
+import gc
 
 ''' Parameters for training '''
 ''' Batch size defined in Parameters for RNN '''
-total_data_num = 0
+total_data_num = 0  # Anyvalue
 input_side_dimension = 64
 learning_rate = 1e-4
-epoch_num = 1000
-save_every_n_epoch = 20
+epoch_num = 2000
+save_every_n_epoch = 100
 
 states_num_one_line = 11
 labels_num_one_line = 4
@@ -25,10 +28,7 @@ img_wid = input_side_dimension
 img_height = input_side_dimension
 
 ''' Parameters for Computer'''
-device = {
-    "gpu1": "0",
-    "gpu2": "1"
-}
+gpu_num = 2
 
 ''' Parameters for RNN'''
 rnn_paras = {
@@ -79,27 +79,24 @@ def myrnn(x, input_len, output_len, raw_batch_size, time_step, state_len):
 
         state = tf.get_variable("state", [raw_batch_size, state_len], trainable=False, initializer=tf.constant_initializer(0.0))
 
-        with tf.device("/gpu:" + device["gpu2"]):
-            for seq in range(time_step):
-                x_temp = x[:, seq, :]  # might not be right
-                state = tf.nn.tanh(tf.matmul(state, u) + tf.matmul(x_temp, w))  # hidden layer activate function
+        for seq in range(time_step):
+            x_temp = x[:, seq, :]  # might not be right
+            state = tf.nn.tanh(tf.matmul(state, u) + tf.matmul(x_temp, w))  # hidden layer activate function
 
-            return tf.nn.tanh(tf.matmul(state, v) + b)  # output layer activate function
+        return tf.nn.tanh(tf.matmul(state, v) + b)  # output layer activate function
 
 
 def conv3d_relu(x, kernel_shape, bias_shape, strides):
     """ 3D convolution For 3D CNN encoder """
     weights = tf.get_variable("weights_con", kernel_shape)  # truncated_normal_initializer(stddev=0.1))
     biases = tf.get_variable("bias_con", bias_shape)
-    with tf.device("/gpu:" + device["gpu1"]):
-        conv = tf.nn.conv3d(x, weights, strides=strides, padding="SAME")
-        return tf.nn.relu(conv + biases)
+    conv = tf.nn.conv3d(x, weights, strides=strides, padding="SAME")
+    return tf.nn.relu(conv + biases)
 
 
 def max_pool(x, kernel_shape, strides):
     """ 3D convolution For 3D CNN encoder """
-    with tf.device("/gpu:" + device["gpu1"]):
-        return tf.nn.max_pool3d(x, ksize=kernel_shape, strides=strides, padding='SAME')
+    return tf.nn.max_pool3d(x, ksize=kernel_shape, strides=strides, padding='SAME')
 
 
 def encoder(x):
@@ -130,50 +127,19 @@ def encoder(x):
             return max_pool2
 
 
-def generate_sin_x_plus_y(number, side_dim, z_dim, out_dim, step, start_x, start_y, start_z):
-    """
-    Generate 3d cube data to fit sin(x+y) + cos(z)= f(sin(x_t0), sin(y_t0)...)
-
-    sin(x) and sin(y) for each slide
-
-    out_put:
-    data1: [number, side_dim, side_dim, side_dim, 1]
-    data2: [number, z_dim]
-    label: [number, 2]
-    """
-    x = start_x
-    y = start_y
-    z = start_z
-
-    data1 = []
-    data2 = []
-    label = []
-
-    for i in range(number):
-        sx = math.sin(x)
-        sy = math.sin(y)
-        sz = math.sin(z)
-        xyz = (math.sin(x+y) + math.cos(z)) / 2.0
-
-        # data1
-        cube = []
-        for j in range(side_dim):
-            if j < side_dim / 2:
-                cube.append([[sx for m in range(side_dim)] for n in range(side_dim)])
-            else:
-                cube.append([[sy for m in range(side_dim)] for n in range(side_dim)])
-
-        data1.append(cube)
-        # data2
-        data2.append([sz for k in range(z_dim)])
-        # label
-        label.append([xyz*g for g in range(1, out_dim+1)])
-        # update seed
-        x = x + step
-        y = y + step
-        z = z + step
-
-    return np.array(data1), np.array(data2), np.array(label)
+def average_gradients(tower_grads):
+    average_grads = []
+    for grad_and_vars in zip(*tower_grads):
+        grads = []
+        for g, _ in grad_and_vars:
+            expend_g = tf.expand_dims(g, 0)
+            grads.append(expend_g)
+        grad = tf.concat(grads, 0)
+        grad = tf.reduce_mean(grad, 0)
+        v = grad_and_vars[0][1]
+        grad_and_var = (grad, v)
+        average_grads.append(grad_and_var)
+    return average_grads
 
 
 def generate_shuffled_array(start, stop, shuffle=True):
@@ -228,13 +194,19 @@ def get_bacth_step(seq, time_step, data):
     :param data: data to get, must be numpy array!!!, at least 2 dimension
     :return: list [seq_size*time_step, data_size:] typical(if values in seq are all valid).
     """
-    result = []
+    shape = list(data.shape)
+    shape[0] = seq.shape[0] * time_step
+    result = np.zeros(shape)
     step = time_step - 1
-    for i in range(seq.shape[0]):
-        for j in range(-step, 1, 1):
-            result.append(data[seq[i] + j, :].tolist())
 
-    return np.array(result)
+    gc.disable()
+
+    for k in range(seq.shape[0]):
+        for j in range(-step, 1, 1):
+            result[k*time_step+step+j, :] = data[seq[k] + j, :]
+
+    gc.enable()
+    return result
 
 
 def get_bacth(seq, data):
@@ -244,11 +216,16 @@ def get_bacth(seq, data):
     :param data: data to get, must be numpy array!!!, at least 2 dimension
     :return: list [seq_size*time_step, data_size:] typical(if values in seq are all valid).
     """
-    result = []
-    for i in range(seq.shape[0]):
-        result.append(data[seq[i], :].tolist())
+    shape = list(data.shape)
+    shape[0] = seq.shape[0]
+    result = np.zeros(shape)
 
-    return np.array(result)
+    gc.disable()
+    for k in range(seq.shape[0]):
+        result[k, :] = data[seq[k], :]
+    gc.enable()
+
+    return result
 
 
 def read_pcl(data, filename):
@@ -308,7 +285,6 @@ class Networkerror(RuntimeError):
 
 
 if __name__ == '__main__':
-    ''' Make some training values '''
     print "Reading data..."
 
     data_mat = []
@@ -387,85 +363,120 @@ if __name__ == '__main__':
         start_position_list.append(rnn_paras["time_step"] - 1)
         stop_position_list.append(data_num_in_files[file_seq])
 
+    ''' Calculate batch size '''
+    batch_size_one_gpu = rnn_paras["raw_batch_size"]
+    batch_size = batch_size_one_gpu * gpu_num
+    batch_num = int((total_data_num - rnn_paras["time_step"] * len(clouds_filename)) / batch_size)  # issue
+
     ''' Graph building '''
+    with tf.device("/cpu:0"):
+        global_step = tf.train.get_or_create_global_step()
+        tower_grads = []
+        cube_data = tf.placeholder("float", name="cube_data", shape=[None, input_side_dimension, input_side_dimension, input_side_dimension, 1])
+        line_data = tf.placeholder("float", name="line_data", shape=[None, concat_paras["dim2"]])
+        reference = tf.placeholder("float", name="reference", shape=[None, rnn_paras["output_len"]])
 
-    cube_data = tf.placeholder("float", name="cube_data", shape=[None, input_side_dimension, input_side_dimension, input_side_dimension, 1])
-    line_data = tf.placeholder("float", name="line_data", shape=[None, concat_paras["dim2"]])
-    reference = tf.placeholder("float", name="reference", shape=[None, rnn_paras["output_len"]])
+        # Optimizer
+        train_step = tf.train.AdamOptimizer(learning_rate)
+        with tf.variable_scope(tf.get_variable_scope()):
+            for gpu_seq in range(gpu_num):
+                with tf.device("/gpu:%d" % gpu_seq):
+                    # Set data for each gpu
+                    cube_data_this_gpu = cube_data[gpu_seq*batch_size_one_gpu*rnn_paras["time_step"]:(gpu_seq+1)*batch_size_one_gpu*rnn_paras["time_step"], :, :, :, :]
+                    line_data_this_gpu = line_data[gpu_seq*batch_size_one_gpu*rnn_paras["time_step"]:(gpu_seq+1)*batch_size_one_gpu*rnn_paras["time_step"], :]
+                    reference_this_gpu = reference[gpu_seq*batch_size_one_gpu:(gpu_seq+1)*batch_size_one_gpu, :]
 
-    # 3D CNN
-    encode_vector = encoder(cube_data)
-    # To flat vector
-    encode_vector_flat = tf.reshape(encode_vector, [-1, encoder_para["outdim"]])
-    # Concat, Note: dimension parameter should be 1, considering batch size
-    concat_vector = tf.concat([encode_vector_flat, line_data], 1)
-    # Dropout
-    # concat_vector = tf.layers.dropout(concat_vector, rate=0.3, training=True)
-    # Feed to rnn
-    rnn_input = tf.reshape(concat_vector, [rnn_paras["raw_batch_size"], rnn_paras["time_step"], rnn_paras["input_len"]])
-    result = myrnn(rnn_input, rnn_paras["input_len"], rnn_paras["output_len"], rnn_paras["raw_batch_size"], rnn_paras["time_step"], rnn_paras["state_len"])
+                    # 3D CNN
+                    encode_vector = encoder(cube_data_this_gpu)
+                    # To flat vector
+                    encode_vector_flat = tf.reshape(encode_vector, [-1, encoder_para["outdim"]])
+                    # Concat, Note: dimension parameter should be 1, considering batch size
+                    concat_vector = tf.concat([encode_vector_flat, line_data_this_gpu], 1)
+                    # Dropout
+                    # concat_vector = tf.layers.dropout(concat_vector, rate=0.3, training=True)
+                    # Feed to rnn
+                    rnn_input = tf.reshape(concat_vector, [batch_size_one_gpu, rnn_paras["time_step"], rnn_paras["input_len"]])
+                    result_this_gpu = myrnn(rnn_input, rnn_paras["input_len"], rnn_paras["output_len"], batch_size_one_gpu, rnn_paras["time_step"], rnn_paras["state_len"])
 
-    ''' Optimizer '''
-    loss = tf.reduce_mean(tf.square(reference - result))
-    train_step = tf.train.AdamOptimizer(learning_rate).minimize(loss)
+                    tf.get_variable_scope().reuse_variables()
+                    loss = tf.reduce_mean(tf.square(reference_this_gpu - result_this_gpu))
+                    grads = train_step.compute_gradients(loss)
+                    tower_grads.append(grads)
 
-    ''' Show trainable variables '''
-    variable_name = [v.name for v in tf.trainable_variables()]
-    print "variable_name", variable_name
+        grads = average_gradients(tower_grads)
+        train_op = train_step.apply_gradients(grads)
 
-    ''' Training '''
-    print "Start training"
+        ''' Show trainable variables '''
+        variable_name = [v.name for v in tf.trainable_variables()]
+        print "variable_name", variable_name
 
-    batch_size = rnn_paras["raw_batch_size"]
-    batch_num = int((total_data_num - rnn_paras["time_step"]*len(clouds_filename)) / batch_size)  # issue
+        ''' Training '''
+        print "Start training"
+        print "Training data number = " + str(total_data_num)
+        print "batch_size = " + str(batch_size)
+        print "batch_num = " + str(batch_num)
+        print "Total epoch num = " + str(epoch_num)
+        print "Will save every " + str(save_every_n_epoch) + " epoches"
 
-    print "Training data number = " + str(total_data_num)
-    print "batch_size = " + str(batch_size)
-    print "batch_num = " + str(batch_num)
-    print "Total epoch num = " + str(epoch_num)
-    print "Will save every " + str(save_every_n_epoch) + " epoches"
+        # set restore and save parameters
+        variables_to_restore = tf.contrib.framework.get_variables_to_restore(include=['encoder'])
+        restorer = tf.train.Saver(variables_to_restore)
+        variables_to_save = tf.contrib.framework.get_variables_to_restore(exclude=['rnn/state'])
+        saver = tf.train.Saver(variables_to_save)
 
-    # set restore and save parameters
-    variables_to_restore = tf.contrib.framework.get_variables_to_restore(include=['encoder'])
-    restorer = tf.train.Saver(variables_to_restore)
-    variables_to_save = tf.contrib.framework.get_variables_to_restore(exclude=['rnn/state'])
-    saver = tf.train.Saver(variables_to_save)
+        # Set memory filling parameters
+        config = tf.ConfigProto(allow_soft_placement=True)  # log_device_placement=True
+        # config.gpu_options.allow_growth = True  # only 300M memory
 
-    with tf.Session() as sess:
-        sess.run(tf.global_variables_initializer())  # initialze variables
-        restorer.restore(sess, "/home/ubuntu/chg_workspace/3dcnn/model/simulation_autoencoder_450.ckpt")
+        with tf.Session(config=config) as sess:
+            sess.run(tf.global_variables_initializer())  # initialze variables
+            restorer.restore(sess, "/home/ubuntu/chg_workspace/3dcnn/model/simulation_autoencoder_450.ckpt")
 
-        # start epoches
-        for epoch in range(epoch_num):
-            print "epoch: " + str(epoch)
-            # get a random sequence for this epoch
-            # sequence = generate_shuffled_array(rnn_paras["time_step"] - 1, total_data_num, shuffle=True)
-            sequence = generate_shuffled_arrays_multifiles(start_position_list, stop_position_list, shuffle=True)
+            # start epoches
+            for epoch in range(epoch_num):
+                print "epoch: " + str(epoch)
+                # get a random sequence for this epoch
+                print "getting a random sequence for this epoch..."
+                t0 = time.time()
+                sequence = generate_shuffled_arrays_multifiles(start_position_list, stop_position_list, shuffle=True)
 
-            # start batches
-            for batch_seq in range(batch_num):
-                print "batch" + str(batch_seq)
-                # get data for this batch
-                start_position = batch_seq * batch_size
-                end_position = (batch_seq+1) * batch_size
-                data1_batch = get_bacth_step(sequence[start_position:end_position], rnn_paras["time_step"], data_mat)
-                data2_batch = get_bacth_step(sequence[start_position:end_position], rnn_paras["time_step"], states_input)
-                label_batch = get_bacth(sequence[start_position:end_position], labels_ref)
+                # start batches
+                for batch_seq in range(batch_num):
+                    print "batch" + str(batch_seq)
+                    # get data for this batch
+                    start_position = batch_seq * batch_size
+                    end_position = (batch_seq+1) * batch_size
+                    data1_batch = get_bacth_step(sequence[start_position:end_position], rnn_paras["time_step"], data_mat)
+                    data2_batch = get_bacth_step(sequence[start_position:end_position], rnn_paras["time_step"], states_input)
+                    label_batch = get_bacth(sequence[start_position:end_position], labels_ref)
 
-                # train
-                sess.run(train_step, feed_dict={cube_data: data1_batch, line_data: data2_batch, reference: label_batch})  # training
+                    # train
+                    sess.run(train_op, feed_dict={cube_data: data1_batch, line_data: data2_batch, reference: label_batch})  # training
 
-            print('loss for this epoch=%s' % sess.run(loss, feed_dict={cube_data: data1_batch, line_data: data2_batch, reference: label_batch}))
+                print('loss for this epoch=%s' % sess.run(loss, feed_dict={cube_data: data1_batch, line_data: data2_batch, reference: label_batch}))
 
-            if epoch % 2 == 0:
-                # draw
-                results = sess.run(result, feed_dict={cube_data: data1_batch, line_data: data2_batch, reference: label_batch})
-                plt.plot(range(results.shape[0]), results[:, 0])
-                plt.plot(range(label_batch.shape[0]), label_batch[:, 0])
-                plt.show()
+                print "Time: " + str(time.time()-t0)
 
-            if epoch % save_every_n_epoch == 0:
-                # save
-                saver.save(sess, '/home/ubuntu/chg_workspace/3dcnn/model/model_cnn_rnn_timestep5/'+'simulation_cnn_rnn'+str(epoch)+'.ckpt')
+                if epoch % 1 == 0:
+                    # get data for validation
+                    start_position_test = random.randint(0, batch_num-1) * batch_size
+                    end_position_test = start_position_test + batch_size
+                    data1_batch_test = get_bacth_step(sequence[start_position_test:end_position_test], rnn_paras["time_step"],
+                                                 data_mat)
+                    data2_batch_test = get_bacth_step(sequence[start_position_test:end_position_test], rnn_paras["time_step"],
+                                                 states_input)
+                    label_batch_test = get_bacth(sequence[start_position_test:end_position_test], labels_ref)
+
+                    # draw
+                    results = sess.run(result_this_gpu, feed_dict={cube_data: data1_batch_test, line_data: data2_batch_test, reference: label_batch_test})
+                    plt.plot(range(batch_size_one_gpu), results[:, 0], color='r')
+                    plt.plot(range(batch_size_one_gpu), label_batch_test[:batch_size_one_gpu, 0], color='m')
+                    plt.plot(range(batch_size_one_gpu), results[:, 1], color='g')
+                    plt.plot(range(batch_size_one_gpu), label_batch_test[:batch_size_one_gpu, 1], color='b')
+                    plt.show()
+
+                if epoch != 0 and epoch % save_every_n_epoch == 0:
+                    # save
+                    saver.save(sess, '/home/ubuntu/chg_workspace/3dcnn/model/model_cnn_rnn_timestep5/'+'simulation_cnn_rnn'+str(epoch)+'.ckpt')
 
 

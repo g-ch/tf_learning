@@ -17,9 +17,11 @@ input_side_dimension = 64
 img_width = input_side_dimension
 img_height = input_side_dimension
 
+model_path = "/home/ubuntu/chg_workspace/3dcnn/model/model_cnn_rnn_timestep5/simulation_cnn_rnn200.ckpt"
+compose_num = [200, 28, 28]
+
 ''' Parameters for RNN'''
 rnn_paras = {
-    "time_step": 4,
     "state_len": 128,
     "input_len": 2304,
     "output_len": 2
@@ -56,6 +58,9 @@ position_odom_x = -1
 position_odom_y = -1
 position_odom_z = -1
 yaw_delt = 0.0
+velocity_odom_linear = 0.0
+velocity_odom_angular = 0.0
+
 pcl_arr = np.ones(dtype=np.float32, shape=[1, img_width, img_width, img_height, 1])
 
 
@@ -155,9 +160,10 @@ def callBackDeltYaw(data):
 
 
 def callBackOdom(data):
-    global position_odom_x, position_odom_y
+    global position_odom_x, position_odom_y, velocity_odom_angular, velocity_odom_linear
     position_odom_x, position_odom_y, position_odom_z = \
         data.pose.pose.position.x, data.pose.pose.position.y, data.pose.pose.position.z
+    velocity_odom_linear, velocity_odom_angular = data.twist.twist.linear.x, data.twist.twist.angular.z
 
 
 if __name__ == '__main__':
@@ -192,19 +198,32 @@ if __name__ == '__main__':
     cube_dim = input_side_dimension
     rate = rospy.Rate(100)  # 100hz
 
-    with tf.Session() as sess:
+    config = tf.ConfigProto(allow_soft_placement=True)  # log_device_placement=True
+    config.gpu_options.allow_growth = True  # only 300M memory
+
+    with tf.Session(config=config) as sess:
         sess.run(tf.global_variables_initializer())  # initialze variables
-        restorer.restore(sess, "/home/ubuntu/chg_workspace/3dcnn/model/model_cnn_rnn_timestep5/simulation_cnn_rnn200.ckpt")
+        restorer.restore(sess, model_path)
         state_data_give = np.zeros([1, rnn_paras["state_len"]])
 
+        counter = 0
         while not rospy.is_shutdown():
             if new_msg_received:
-                data2_to_feed = np.ones([1, 256]) * yaw_delt
+                data2_yaw = np.ones([1, compose_num[0]]) * yaw_delt
+                data2_vl = np.ones([1, compose_num[1]]) * velocity_odom_linear
+                data2_va = np.ones([1, compose_num[2]]) * velocity_odom_angular
+
+                data2_to_feed = np.concatenate([data2_yaw, data2_vl, data2_va], axis=1)
+
                 results = sess.run(result, feed_dict={cube_data: pcl_arr, line_data: data2_to_feed,
                                                       state_data: state_data_give})
-                move_cmd.linear.x = results[0, 0] * 0.5
-                move_cmd.angular.z = -results[0, 1] * 1.2
-                cmd_pub.publish(move_cmd)
+                move_cmd.linear.x = -results[0, 0] * 0.4
+                move_cmd.angular.z = results[0, 1] * 1.5
+
+                if counter > 40:
+                    cmd_pub.publish(move_cmd)
+
+                counter = counter + 1
 
                 print results
                 state_data_give = sess.run(state_returned,
