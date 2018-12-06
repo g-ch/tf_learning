@@ -3,13 +3,14 @@ import numpy as np
 import math
 import sys
 import csv
+import gc
 
 input_side_diamension = 64
 batch_size = 20
 learning_rate = 1e-4
 total_epoches = 500
-save_every_n_epoch = 50
-filename = "/home/ubuntu/chg_workspace/data/csvs/pcl_data_2018_11_30_21:07:37.csv"
+save_every_n_epoch = 100
+filename = "/home/ubuntu/chg_workspace/data/new_csvs/backward_unable/chg_route1_trial1/pcl_data_2018_12_06_15:51:38.csv"
 
 img_wid = input_side_diamension
 img_height = input_side_diamension
@@ -150,13 +151,19 @@ def get_bacth_step(seq, time_step, data):
     :param data: data to get, must be numpy array!!!, at least 2 dimension
     :return: list [seq_size*time_step, data_size:] typical(if values in seq are all valid).
     """
-    result = []
+    shape = list(data.shape)
+    shape[0] = seq.shape[0] * time_step
+    result = np.zeros(shape)
     step = time_step - 1
-    for i in range(seq.shape[0]):
-        for j in range(-step, 1, 1):
-            result.append(data[seq[i] + j, :].tolist())
 
-    return np.array(result)
+    gc.disable()
+
+    for k in range(seq.shape[0]):
+        for j in range(-step, 1, 1):
+            result[k*time_step+step+j, :] = data[seq[k] + j, :]
+
+    gc.enable()
+    return result
 
 
 def get_bacth(seq, data):
@@ -166,11 +173,16 @@ def get_bacth(seq, data):
     :param data: data to get, must be numpy array!!!, at least 2 dimension
     :return: list [seq_size*time_step, data_size:] typical(if values in seq are all valid).
     """
-    result = []
-    for i in range(seq.shape[0]):
-        result.append(data[seq[i], :].tolist())
+    shape = list(data.shape)
+    shape[0] = seq.shape[0]
+    result = np.zeros(shape)
 
-    return np.array(result)
+    gc.disable()
+    for k in range(seq.shape[0]):
+        result[k, :] = data[seq[k], :]
+    gc.enable()
+
+    return result
 
 
 def read_pcl(data,filename):

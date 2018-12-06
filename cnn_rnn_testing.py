@@ -11,7 +11,7 @@ import csv
 test_data_num = 400
 input_side_dimension = 64
 
-states_num_one_line = 11
+states_num_one_line = 13
 labels_num_one_line = 4
 
 clouds_filename = "/home/ubuntu/chg_workspace/data/csvs/chg_route1_trial1/pcl_data_2018_12_03_11:34:18.csv"
@@ -24,15 +24,15 @@ img_height = input_side_dimension
 ''' Parameters for RNN'''
 rnn_paras = {
     "time_step": 5,
-    "state_len": 128,
-    "input_len": 2304,
+    "state_len": 256,
+    "input_len": 2500,
     "output_len": 2
 }
 
 ''' Parameters for concat values'''
 concat_paras = {
     "dim1": 2048,  # should be the same as encoder out dim
-    "dim2": 256  # dim1 + dim2 should be input_len of the rnn, for line vector
+    "dim2": 452  # dim1 + dim2 should be input_len of the rnn, for line vector
 }
 
 ''' Parameters for CNN encoder'''
@@ -209,7 +209,7 @@ if __name__ == '__main__':
     # states_input = np.concatenate([np.reshape(states_mat[:, 10], [states_num, 1]) for i in range(compose_num[0])],
     #                               axis=1)  # delt_yaw
 
-    compose_num = [200, 28, 28]
+    compose_num = [100, 100, 240, 6, 6]
     # check total number
     num_total = 0
     for num_x in compose_num:
@@ -217,15 +217,19 @@ if __name__ == '__main__':
     if num_total != concat_paras["dim2"]:
         raise Networkerror("compose_num does not match concat_paras!")
     # concat for input2
+    states_input_current_yaw_x = np.concatenate(
+        [np.reshape(states_mat[:, 10], [states_num, 1]) for i in range(compose_num[0])], axis=1)  # current_yaw_x
+    states_input_current_yaw_y = np.concatenate(
+        [np.reshape(states_mat[:, 11], [states_num, 1]) for i in range(compose_num[1])], axis=1)  # current_yaw_y
     states_input_delt_yaw = np.concatenate(
-        [np.reshape(states_mat[:, 10], [states_num, 1]) for i in range(compose_num[0])], axis=1)  # delt_yaw
+        [np.reshape(states_mat[:, 12], [states_num, 1]) for i in range(compose_num[2])], axis=1)  # delt_yaw
     states_input_linear_vel = np.concatenate(
-        [np.reshape(states_mat[:, 2], [states_num, 1]) for i in range(compose_num[1])], axis=1)  # linear vel
+        [np.reshape(states_mat[:, 2], [states_num, 1]) for i in range(compose_num[3])], axis=1)  # linear vel
     states_input_angular_vel = np.concatenate(
-        [np.reshape(states_mat[:, 3], [states_num, 1]) for i in range(compose_num[2])], axis=1)  # angular vel
+        [np.reshape(states_mat[:, 3], [states_num, 1]) for i in range(compose_num[4])], axis=1)  # angular vel
 
-    states_input = np.concatenate([states_input_delt_yaw, states_input_linear_vel, states_input_angular_vel], axis=1)
-
+    states_input = np.concatenate(
+        [states_input_current_yaw_x, states_input_current_yaw_y, states_input_delt_yaw, states_input_linear_vel, states_input_angular_vel], axis=1)
 
     labels_ref = labels_mat[:, 0:2]  # vel_cmd, angular_cmd
 
@@ -254,7 +258,7 @@ if __name__ == '__main__':
     cube_dim = input_side_dimension
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())  # initialze variables
-        restorer.restore(sess, "/home/ubuntu/chg_workspace/3dcnn/model/model_cnn_rnn_timestep5/simulation_cnn_rnn200.ckpt")
+        restorer.restore(sess, "/home/ubuntu/chg_workspace/3dcnn/model/model_cnn_rnn_timestep5/simulation_cnn_rnn1600.ckpt")
         state_data_give = np.zeros([1, rnn_paras["state_len"]])
 
         results_to_draw = []

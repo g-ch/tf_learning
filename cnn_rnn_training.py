@@ -17,9 +17,12 @@ states_num_one_line = 11
 labels_num_one_line = 4
 
 path = "/home/ubuntu/chg_workspace/data/csvs"
-clouds_filename = ["/chg_route1_trial1/pcl_data_2018_12_03_11:34:18.csv", "/hzy_route1_trial1/pcl_data_2018_12_03_11:26:38.csv"]
-states_filename = ["/chg_route1_trial1/uav_data_2018_12_03_11:34:18.csv", "/hzy_route1_trial1/uav_data_2018_12_03_11:26:38.csv"]
-labels_filename = ["/chg_route1_trial1/label_data_2018_12_03_11:34:18.csv", "/hzy_route1_trial1/label_data_2018_12_03_11:26:38.csv"]
+clouds_filename = ["/chg_route1_trial1/pcl_data_2018_12_03_11:34:18.csv",
+                   "/hzy_route1_trial1/pcl_data_2018_12_03_11:26:38.csv"]
+states_filename = ["/chg_route1_trial1/uav_data_2018_12_03_11:34:18.csv",
+                   "/hzy_route1_trial1/uav_data_2018_12_03_11:26:38.csv"]
+labels_filename = ["/chg_route1_trial1/label_data_2018_12_03_11:34:18.csv",
+                   "/hzy_route1_trial1/label_data_2018_12_03_11:26:38.csv"]
 
 img_wid = input_side_dimension
 img_height = input_side_dimension

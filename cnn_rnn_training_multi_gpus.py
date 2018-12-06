@@ -14,15 +14,24 @@ total_data_num = 0  # Anyvalue
 input_side_dimension = 64
 learning_rate = 1e-4
 epoch_num = 2000
-save_every_n_epoch = 100
+save_every_n_epoch = 200
 
-states_num_one_line = 11
+states_num_one_line = 13
 labels_num_one_line = 4
 
-path = "/home/ubuntu/chg_workspace/data/csvs"
-clouds_filename = ["/chg_route1_trial1/pcl_data_2018_12_03_11:34:18.csv", "/hzy_route1_trial1/pcl_data_2018_12_03_11:26:38.csv"]
-states_filename = ["/chg_route1_trial1/uav_data_2018_12_03_11:34:18.csv", "/hzy_route1_trial1/uav_data_2018_12_03_11:26:38.csv"]
-labels_filename = ["/chg_route1_trial1/label_data_2018_12_03_11:34:18.csv", "/hzy_route1_trial1/label_data_2018_12_03_11:26:38.csv"]
+path = "/home/ubuntu/chg_workspace/data/new_csvs/backward_unable"
+clouds_filename = ["/chg_route1_trial3_swinging/pcl_data_2018_12_06_17:40:13.csv",
+                   "/hzy_route1_trial1/pcl_data_2018_12_06_16:15:18.csv",
+                   "/hzy_route1_trial2/pcl_data_2018_12_06_15:58:00.csv",
+                   "/chg_route1_trial1/pcl_data_2018_12_06_15:51:38.csv"]
+states_filename = ["/chg_route1_trial3_swinging/uav_data_2018_12_06_17:40:13.csv",
+                   "/hzy_route1_trial1/uav_data_2018_12_06_16:15:18.csv",
+                   "/hzy_route1_trial2/uav_data_2018_12_06_15:58:00.csv",
+                   "/chg_route1_trial1/uav_data_2018_12_06_15:51:38.csv"]
+labels_filename = ["/chg_route1_trial3_swinging/label_data_2018_12_06_17:40:13.csv",
+                   "/hzy_route1_trial1/label_data_2018_12_06_16:15:18.csv",
+                   "/hzy_route1_trial2/label_data_2018_12_06_15:58:00.csv",
+                   "/chg_route1_trial1/label_data_2018_12_06_15:51:38.csv"]
 
 img_wid = input_side_dimension
 img_height = input_side_dimension
@@ -32,17 +41,17 @@ gpu_num = 2
 
 ''' Parameters for RNN'''
 rnn_paras = {
-    "raw_batch_size": 30,
+    "raw_batch_size": 15,
     "time_step": 5,
-    "state_len": 128,
-    "input_len": 2304,
+    "state_len": 256,
+    "input_len": 2500,
     "output_len": 2
 }
 
 ''' Parameters for concat values'''
 concat_paras = {
     "dim1": 2048,  # should be the same as encoder out dim
-    "dim2": 256  # dim1 + dim2 should be input_len of the rnn, for line vector
+    "dim2": 452  # dim1 + dim2 should be input_len of the rnn, for line vector
 }
 
 ''' Parameters for CNN encoder'''
@@ -324,7 +333,7 @@ if __name__ == '__main__':
         read_others(labels_mat_this, label_filename_this, labels_num_one_line)
 
         ''' Choose useful states and labels '''
-        compose_num = [200, 28, 28]
+        compose_num = [100, 100, 240, 6, 6]
         # check total number
         num_total = 0
         for num_x in compose_num:
@@ -332,11 +341,13 @@ if __name__ == '__main__':
         if num_total != concat_paras["dim2"]:
             raise Networkerror("compose_num does not match concat_paras!")
         # concat for input2
-        states_input_delt_yaw = np.concatenate([np.reshape(states_mat_this[:, 10], [states_num, 1]) for i in range(compose_num[0])], axis=1)  # delt_yaw
-        states_input_linear_vel = np.concatenate([np.reshape(states_mat_this[:, 2], [states_num, 1]) for i in range(compose_num[1])], axis=1)  # linear vel
-        states_input_angular_vel = np.concatenate([np.reshape(states_mat_this[:, 3], [states_num, 1]) for i in range(compose_num[2])], axis=1)  # angular vel
+        states_input_current_yaw_x = np.concatenate([np.reshape(states_mat_this[:, 10], [states_num, 1]) for i in range(compose_num[0])], axis=1)  # current yaw x
+        states_input_current_yaw_y = np.concatenate([np.reshape(states_mat_this[:, 11], [states_num, 1]) for i in range(compose_num[1])], axis=1)  # current yaw y
+        states_input_delt_yaw = np.concatenate([np.reshape(states_mat_this[:, 12], [states_num, 1]) for i in range(compose_num[2])], axis=1)  # delt_yaw
+        states_input_linear_vel = np.concatenate([np.reshape(states_mat_this[:, 2], [states_num, 1]) for i in range(compose_num[3])], axis=1)  # linear vel
+        states_input_angular_vel = np.concatenate([np.reshape(states_mat_this[:, 3], [states_num, 1]) for i in range(compose_num[4])], axis=1)  # angular vel
 
-        states_input_this = np.concatenate([states_input_delt_yaw, states_input_linear_vel, states_input_angular_vel], axis=1)
+        states_input_this = np.concatenate([states_input_current_yaw_x, states_input_current_yaw_y, states_input_delt_yaw, states_input_linear_vel, states_input_angular_vel], axis=1)
 
         labels_ref_this = labels_mat_this[:, 0:2]  # vel_cmd, angular_cmd
 
@@ -393,13 +404,18 @@ if __name__ == '__main__':
                     # Concat, Note: dimension parameter should be 1, considering batch size
                     concat_vector = tf.concat([encode_vector_flat, line_data_this_gpu], 1)
                     # Dropout
-                    # concat_vector = tf.layers.dropout(concat_vector, rate=0.3, training=True)
+                    concat_vector = tf.layers.dropout(concat_vector, rate=0.3, training=True)
                     # Feed to rnn
                     rnn_input = tf.reshape(concat_vector, [batch_size_one_gpu, rnn_paras["time_step"], rnn_paras["input_len"]])
                     result_this_gpu = myrnn(rnn_input, rnn_paras["input_len"], rnn_paras["output_len"], batch_size_one_gpu, rnn_paras["time_step"], rnn_paras["state_len"])
 
                     tf.get_variable_scope().reuse_variables()
-                    loss = tf.reduce_mean(tf.square(reference_this_gpu - result_this_gpu))
+
+                    # Note!!! special loss
+                    temp_to_merge1 = tf.reshape(result_this_gpu[:, 0], [tf.shape(result_this_gpu)[0], 1])
+                    temp_to_merge2 = tf.zeros([tf.shape(result_this_gpu)[0], 1])
+                    result_merged = tf.concat([temp_to_merge1, temp_to_merge2], axis=1)  # keep linear velocity
+                    loss = tf.reduce_mean(tf.square(reference_this_gpu - result_this_gpu) + 0.2 * tf.square(tf.abs(result_merged) - result_merged)) # expect a positive linear velocity
                     grads = train_step.compute_gradients(loss)
                     tower_grads.append(grads)
 
@@ -457,7 +473,7 @@ if __name__ == '__main__':
 
                 print "Time: " + str(time.time()-t0)
 
-                if epoch % 1 == 0:
+                if epoch % 100 == 0:
                     # get data for validation
                     start_position_test = random.randint(0, batch_num-1) * batch_size
                     end_position_test = start_position_test + batch_size
