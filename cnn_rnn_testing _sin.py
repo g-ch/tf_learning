@@ -144,7 +144,7 @@ def generate_sin_x_plus_y(number, side_dim_xy, side_dim_z, z_dim, out_dim, step,
         sx = math.sin(x)
         sy = math.sin(y)
         sz = math.sin(z)
-        xyz = (math.sin(x+y) + math.cos(z) + 2.0) / 2.0  # To (0, 1)
+        xyz = (math.sin(x+y) + math.cos(z)) / 2.0  # To (-1, 1)
 
         # data1
         cube = []
@@ -175,11 +175,10 @@ if __name__ == '__main__':
     print "generating data... "
     # create a dataset, validate
     data1, data2, label = generate_sin_x_plus_y(data_num, input_dimension_xy, input_dimension_z,
-                                                input_paras["input2_dim"], rnn_paras["output_len"], 0.4, 0.3, 0.8, 1)
+                                                input_paras["input2_dim"], rnn_paras["output_len"], 0.3, 0.2, 0.7, 1)
     data1 = data1.reshape(data_num, input_dimension_xy, input_dimension_xy, input_dimension_z, 1)
 
     print "Data generated!"
-
 
     ''' Graph building '''
     cube_data = tf.placeholder("float", name="cube_data",
@@ -215,7 +214,7 @@ if __name__ == '__main__':
 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())  # initialze variables
-        restorer.restore(sess, "/home/clarence/log/model_rnn/simulation_cnn_rnn500.ckpt")
+        restorer.restore(sess, "/home/clarence/log/model_rnn/simulation_cnn_rnn200.ckpt")
         state_data_give = np.zeros([1, rnn_paras["state_len"]])
 
         results_to_draw = []

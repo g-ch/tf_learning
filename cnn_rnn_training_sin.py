@@ -8,7 +8,7 @@ import csv
 ''' Parameters for training '''
 ''' Batch size defined in Parameters for RNN '''
 total_data_num = 30
-learning_rate = 1e-4
+learning_rate = 2e-4
 epoch_num = 1000
 save_every_n_epoch = 50
 
@@ -77,7 +77,7 @@ def myrnn(x, input_len, output_len, raw_batch_size, time_step, state_len):
             x_temp = x[:, seq, :]  # might not be right
             state = tf.nn.tanh(tf.matmul(state, u) + tf.matmul(x_temp, w))  # hidden layer activate function
 
-        return tf.nn.relu(tf.matmul(state, v) + b)  # output layer activate function
+        return tf.nn.tanh(tf.matmul(state, v) + b)  # output layer activate function
 
 
 def conv3d_relu(x, kernel_shape, bias_shape, strides):
@@ -154,7 +154,7 @@ def generate_sin_x_plus_y(number, side_dim_xy, side_dim_z, z_dim, out_dim, step,
         sx = math.sin(x)
         sy = math.sin(y)
         sz = math.sin(z)
-        xyz = (math.sin(x+y) + math.cos(z) + 2.0) / 2.0  # To (0, 1)
+        xyz = (math.sin(x+y) + math.cos(z)) / 2.0  # To (-1, 1)
 
         # data1
         cube = []
@@ -264,7 +264,6 @@ if __name__ == '__main__':
     ''' Optimizer '''
     loss = tf.reduce_mean(tf.square(reference - result))
     train_step = tf.train.AdamOptimizer(learning_rate).minimize(loss)
-    #train_step = tf.train.AdagradOptimizer(learning_rate).minimize(loss)
 
     ''' Show trainable variables '''
     variable_name = [v.name for v in tf.trainable_variables()]
