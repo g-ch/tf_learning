@@ -8,43 +8,54 @@ import csv
 ''' Parameters for training '''
 ''' Batch size defined in Parameters for RNN '''
 total_data_num = 30
-input_side_dimension = 64
 learning_rate = 1e-4
 epoch_num = 1000
 save_every_n_epoch = 50
+
+''' Parameters for input vectors'''
+input_paras = {
+    "input1_dim_xy": 64,
+    "input1_dim_z": 36,
+    "input2_dim": 8,
+    "input3_dim": 8
+}
 
 ''' Parameters for RNN'''
 rnn_paras = {
     "raw_batch_size": 20,
     "time_step": 4,
-    "state_len": 128,
-    "input_len": 2176,
+    "state_len": 64,
+    "input_len": 576,
     "output_len": 2
 }
 
 ''' Parameters for concat values'''
 concat_paras = {
-    "dim1": 2048,  # should be the same as encoder out dim
-    "dim2": 128  # dim1 + dim2 should be input_len of the rnn, for line vector
+    "dim1": 512,  # should be the same as encoder out dim
+    "dim2": 32,
+    "dim3": 32  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
 }
 
 ''' Parameters for CNN encoder'''
 encoder_para = {
     "kernel1": 5,
-    "stride1": 2,  # do not change
+    "stride_xy1": 2,
+    "stride_z1": 3,
     "channel1": 32,
+    "pool1": 2,
     "kernel2": 3,
-    "stride2": 1,  # do not change
-    "channel2": 32,
-    "pool1": 4,  # 2 or 4 recommended, carefully choose according to input_side_dimmension to keep values interger
-    "pool2": 2,  # 2 or 4 recommended, carefully choose according to input_side_dimmension to keep values interger
-    "outdim": 2048
+    "stride_xy2": 2,
+    "stride_z2": 3,
+    "channel2": 64,
+    "kernel3": 3,
+    "stride_xy3": 2,
+    "stride_z3": 2,
+    "channel3": 128,
+    "out_dia": 2048
 }
 
-pooled_side_len1 = input_side_dimension
-pooled_side_len2 = int(input_side_dimension / (encoder_para["pool1"] * encoder_para["stride1"]))
-
-pooled_size = int(input_side_dimension * input_side_dimension * input_side_dimension * encoder_para["channel2"] / math.pow(encoder_para["pool1"]*encoder_para["pool2"]*encoder_para["stride1"], 3))
+input_dimension_xy = input_paras["input1_dim_xy"]
+input_dimension_z = input_paras["input1_dim_z"]
 
 
 def myrnn(x, input_len, output_len, raw_batch_size, time_step, state_len):
@@ -66,7 +77,7 @@ def myrnn(x, input_len, output_len, raw_batch_size, time_step, state_len):
             x_temp = x[:, seq, :]  # might not be right
             state = tf.nn.tanh(tf.matmul(state, u) + tf.matmul(x_temp, w))  # hidden layer activate function
 
-        return tf.nn.tanh(tf.matmul(state, v) + b)  # output layer activate function
+        return tf.nn.relu(tf.matmul(state, v) + b)  # output layer activate function
 
 
 def conv3d_relu(x, kernel_shape, bias_shape, strides):
@@ -82,35 +93,45 @@ def max_pool(x, kernel_shape, strides):
     return tf.nn.max_pool3d(x, ksize=kernel_shape, strides=strides, padding='SAME')
 
 
-def encoder(x):
-    """
-    3D CNN encoder function
-    x: [raw_batch_size, input_len_x, input_len_y, input_len_z, 1]
-    """
+def relu_layer(x, x_diamension, neurals_num):
+    weights = tf.get_variable("weights", [x_diamension, neurals_num], initializer=tf.truncated_normal_initializer(stddev=0.1))
+    biases = tf.get_variable("bias", [neurals_num], initializer=tf.constant_initializer(0.1))
+    return tf.nn.relu(tf.matmul(x, weights) + biases)
 
+
+def encoder(x):
     k1 = encoder_para["kernel1"]
-    s1 = encoder_para["stride1"]
+    sxy1 = encoder_para["stride_xy1"]
+    sz1 = encoder_para["stride_z1"]
     d1 = encoder_para["channel1"]
     p1 = encoder_para["pool1"]
 
     k2 = encoder_para["kernel2"]
-    s2 = encoder_para["stride2"]
+    sxy2 = encoder_para["stride_xy2"]
+    sz2 = encoder_para["stride_z2"]
     d2 = encoder_para["channel2"]
-    p2 = encoder_para["pool2"]
+
+    k3 = encoder_para["kernel3"]
+    sxy3 = encoder_para["stride_xy3"]
+    sz3 = encoder_para["stride_z3"]
+    d3 = encoder_para["channel3"]
 
     with tf.variable_scope("encoder"):
         with tf.variable_scope("conv1"):
-            conv1 = conv3d_relu(x, [k1, k1, k1, 1, d1], [d1], [1, s1, s1, s1, 1])
+            conv1 = conv3d_relu(x, [k1, k1, k1, 1, d1], [d1], [1, sxy1, sxy1, sz1, 1])
+
+        with tf.variable_scope("pool1"):
             max_pool1 = max_pool(conv1, [1, p1, p1, p1, 1], [1, p1, p1, p1, 1])
 
         with tf.variable_scope("conv2"):
-            conv2 = conv3d_relu(max_pool1, [k2, k2, k2, d1, d2], [d2], [1, s2, s2, s2, 1])
-            max_pool2 = max_pool(conv2, [1, p2, p2, p2, 1], [1, p2, p2, p2, 1])
-            # print "max_pool2 ", max_pool2
-            return max_pool2
+            conv2 = conv3d_relu(max_pool1, [k2, k2, k2, d1, d2], [d2], [1, sxy2, sxy2, sz2, 1])
+
+        with tf.variable_scope("conv3"):
+            conv3 = conv3d_relu(conv2, [k3, k3, k3, d2, d3], [d3], [1, sxy3, sxy3, sz3, 1])
+            return conv3
 
 
-def generate_sin_x_plus_y(number, side_dim, z_dim, out_dim, step, start_x, start_y, start_z):
+def generate_sin_x_plus_y(number, side_dim_xy, side_dim_z, z_dim, out_dim, step, start_x, start_y, start_z):
     """
     Generate 3d cube data to fit sin(x+y) + cos(z)= f(sin(x_t0), sin(y_t0)...)
 
@@ -133,15 +154,15 @@ def generate_sin_x_plus_y(number, side_dim, z_dim, out_dim, step, start_x, start
         sx = math.sin(x)
         sy = math.sin(y)
         sz = math.sin(z)
-        xyz = (math.sin(x+y) + math.cos(z)) / 2.0
+        xyz = (math.sin(x+y) + math.cos(z) + 2.0) / 2.0  # To (0, 1)
 
         # data1
         cube = []
-        for j in range(side_dim):
-            if j < side_dim / 2:
-                cube.append([[sx for m in range(side_dim)] for n in range(side_dim)])
+        for j in range(side_dim_xy):
+            if j < side_dim_xy / 2:
+                cube.append([[sx for m in range(side_dim_z)] for n in range(side_dim_xy)])
             else:
-                cube.append([[sy for m in range(side_dim)] for n in range(side_dim)])
+                cube.append([[sy for m in range(side_dim_z)] for n in range(side_dim_xy)])
 
         data1.append(cube)
         # data2
@@ -204,34 +225,38 @@ if __name__ == '__main__':
     data_num = total_data_num
 
     print "generating data... "
-    cube_dim = input_side_dimension
-
     # create a dataset, validate
-    data1, data2, label = generate_sin_x_plus_y(data_num, cube_dim, concat_paras["dim2"], rnn_paras["output_len"], 0.1, 0, 0.5, 2)
-    data1 = data1.reshape(data_num, cube_dim, cube_dim, cube_dim, 1)
-
-    # batch get example
-    # batch_size = rnn_paras["raw_batch_size"]
-    # data1_batch = get_bacth(sequence[0:batch_size], rnn_paras["time_step"], data1)
-    # data2_batch = get_bacth(sequence[0:batch_size], rnn_paras["time_step"], data2)
-    # label_batch = get_bacth(sequence[0:batch_size], 1, label)
+    data1, data2, label = generate_sin_x_plus_y(data_num, input_dimension_xy, input_dimension_z, input_paras["input2_dim"], rnn_paras["output_len"], 0.1, 0, 0.5, 2)
+    data1 = data1.reshape(data_num, input_dimension_xy, input_dimension_xy, input_dimension_z, 1)
 
     print "Data generated!"
 
     ''' Graph building '''
 
-    cube_data = tf.placeholder("float", name="cube_data", shape=[None, input_side_dimension, input_side_dimension, input_side_dimension, 1])
-    line_data = tf.placeholder("float", name="line_data", shape=[None, concat_paras["dim2"]])
+    cube_data = tf.placeholder("float", name="cube_data", shape=[None, input_dimension_xy, input_dimension_xy, input_dimension_z, 1])
+    line_data_1 = tf.placeholder("float", name="line_data", shape=[None, input_paras["input2_dim"]])  # States
+    line_data_2 = tf.placeholder("float", name="line_data", shape=[None, input_paras["input3_dim"]])  # commands
     reference = tf.placeholder("float", name="reference", shape=[None, rnn_paras["output_len"]])
 
     # 3D CNN
     encode_vector = encoder(cube_data)
     # To flat vector
-    encode_vector_flat = tf.reshape(encode_vector, [-1, encoder_para["outdim"]])
+    encode_vector_flat = tf.reshape(encode_vector, [-1, encoder_para["out_dia"]])
+    # Dropout 1
+    encode_vector_flat = tf.layers.dropout(encode_vector_flat, rate=0.3, training=True)
+    # Add a fully connected layer for map
+    with tf.variable_scope("relu_encoder"):
+        map_data_line = relu_layer(encode_vector_flat, encoder_para["out_dia"], concat_paras["dim1"])
+    # Add a fully connected layer for states
+    with tf.variable_scope("relu_states"):
+        states_data_line = relu_layer(line_data_1, input_paras["input2_dim"], concat_paras["dim2"])
+    # Add a fully connected layer for commands
+    with tf.variable_scope("relu_commands"):
+        commands_data_line = relu_layer(line_data_2, input_paras["input3_dim"], concat_paras["dim3"])
     # Concat, Note: dimension parameter should be 1, considering batch size
-    concat_vector = tf.concat([encode_vector_flat, line_data], 1)
-    # Dropout
-    # concat_vector = tf.layers.dropout(concat_vector, rate=0.3, training=True)
+    concat_vector = tf.concat([map_data_line, states_data_line, commands_data_line], 1)
+    # Dropout 2
+    concat_vector = tf.layers.dropout(concat_vector, rate=0.3, training=True)
     # Feed to rnn
     rnn_input = tf.reshape(concat_vector, [rnn_paras["raw_batch_size"], rnn_paras["time_step"], rnn_paras["input_len"]])
     result = myrnn(rnn_input, rnn_paras["input_len"], rnn_paras["output_len"], rnn_paras["raw_batch_size"], rnn_paras["time_step"], rnn_paras["state_len"])
@@ -259,7 +284,7 @@ if __name__ == '__main__':
 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())  # initialze variables
-        restorer.restore(sess, "/home/ubuntu/chg_workspace/3dcnn/model/500_autoencoder.ckpt")
+        restorer.restore(sess, "/home/clarence/log/model/40_autoencoder.ckpt")
 
         # start epoches
         for epoch in range(epoch_num):
@@ -274,22 +299,16 @@ if __name__ == '__main__':
                 end_position = (batch_seq+1) * batch_size
                 data1_batch = get_bacth_step(sequence[start_position:end_position], rnn_paras["time_step"], data1)
                 data2_batch = get_bacth_step(sequence[start_position:end_position], rnn_paras["time_step"], data2)
+                data3_batch = data2_batch
                 label_batch = get_bacth(sequence[start_position:end_position], label)
 
                 # train
-                sess.run(train_step, feed_dict={cube_data: data1_batch, line_data: data2_batch, reference: label_batch})  # training
+                sess.run(train_step, feed_dict={cube_data: data1_batch, line_data_1: data2_batch, line_data_2: data3_batch, reference: label_batch})  # training
 
-            print('loss for this epoch=%s' % sess.run(loss, feed_dict={cube_data: data1_batch, line_data: data2_batch, reference: label_batch}))
-
-            if epoch % 2 == 0:
-                # draw
-                results = sess.run(result, feed_dict={cube_data: data1_batch, line_data: data2_batch, reference: label_batch})
-                plt.plot(range(results.shape[0]), results[:, 0])
-                plt.plot(range(label_batch.shape[0]), label_batch[:, 0])
-                plt.show()
+            print('loss for this epoch=%s' % sess.run(loss, feed_dict={cube_data: data1_batch, line_data_1: data2_batch, line_data_2: data3_batch, reference: label_batch}))
 
             if epoch % save_every_n_epoch == 0:
                 # save
-                saver.save(sess, '/home/ubuntu/chg_workspace/3dcnn/model/model_cnn_rnn_timestep5/'+'simulation_cnn_rnn'+str(epoch)+'.ckpt')
+                saver.save(sess, '/home/clarence/log/model_rnn/'+'simulation_cnn_rnn'+str(epoch)+'.ckpt')
 
 

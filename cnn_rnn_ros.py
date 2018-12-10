@@ -31,6 +31,7 @@ concat_paras = {
     "dim2": 256  # dim1 + dim2 should be input_len of the rnn, for line vector
 }
 
+
 ''' Parameters for CNN encoder'''
 encoder_para = {
     "kernel1": 5,
