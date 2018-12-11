@@ -16,10 +16,10 @@ def compare_draw_3d_to_2d(data1, data2, min_val, max_val, rows, cols, step):
     :param step: step in z axis to show
     :return:
     """
-    colors = ['purple', 'yellow']
-    bounds = [min_val, max_val]
-    cmap = mpl.colors.ListedColormap(colors)
-    norm = mpl.colors.BoundaryNorm(bounds, cmap.N)
+    # colors = ['purple', 'yellow']
+    # bounds = [min_val, max_val]
+    # cmap = mpl.colors.ListedColormap(colors)
+    # norm = mpl.colors.BoundaryNorm(bounds, cmap.N)
 
     f, a = plt.subplots(rows, cols, figsize=(cols, rows))
 
@@ -29,10 +29,10 @@ def compare_draw_3d_to_2d(data1, data2, min_val, max_val, rows, cols, step):
 
     for i in range(cols):
         for j in range(rows / 2):
-            a[2 * j][i].imshow(data1[:, :, (j * rows + cols) * step])
-            a[2 * j + 1][i].imshow(data2[:, :, (j * rows + cols) * step])
+            a[2 * j][i].imshow(data1[:, :, (j * cols + i) * step])
+            a[2 * j + 1][i].imshow(data2[:, :, (j * cols + i) * step])
 
-    plt.show(cmap=cmap, norm=norm)
+    plt.show() #cmap=cmap, norm=norm
 
 
 def draw_plots(x, y):
@@ -55,13 +55,15 @@ def draw_plots(x, y):
 
 if __name__ == "__main__":
 
-    # data_mat = np.ones([5, 64, 64, 64, 1]) / 2
-    # data_mat[2, 0, 0, :, 0] = 0
-    # data_mat[2, 0, 1, :, 0] = 1
-    # decode_pcl = np.zeros([5, 64, 64, 64, 1])
-    #
-    # compare_draw_3d_to_2d(data_mat[2,:,:,:,0], decode_pcl[2,:,:,:,0], 0, 1, 4, 8, 4)
+    data_mat = np.ones([5, 64, 64, 64, 1]) / 2
+    data_mat[2, 8, :, :, 0] = 0.0
 
-    x = np.array([np.arange(1, 10), np.arange(11, 15), np.arange(15, 20)])
-    y = np.multiply(0.02, x)
-    draw_plots(x, y)
+    decode_pcl = np.zeros([5, 64, 64, 64, 1])
+    decode_pcl[2, 8, :, :, 0] = 1.0
+
+
+    compare_draw_3d_to_2d(data_mat[2,:,:,:,0], decode_pcl[2,:,:,:,0], 0, 1, 4, 8, 4)
+
+    # x = np.array([np.arange(1, 10), np.arange(11, 15), np.arange(15, 20)])
+    # y = np.multiply(0.02, x)
+    # draw_plots(x, y)
