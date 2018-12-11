@@ -18,7 +18,7 @@ input_paras = {
 ''' Parameters for RNN'''
 rnn_paras = {
     "time_step": 4,
-    "state_len": 64,
+    "state_len": 128,
     "input_len": 576,
     "output_len": 2
 }
@@ -175,7 +175,7 @@ if __name__ == '__main__':
     print "generating data... "
     # create a dataset, validate
     data1, data2, label = generate_sin_x_plus_y(data_num, input_dimension_xy, input_dimension_z,
-                                                input_paras["input2_dim"], rnn_paras["output_len"], 0.3, 0.2, 0.7, 1)
+                                                input_paras["input2_dim"], rnn_paras["output_len"], 0.1, 0, 0.5, 2)
     data1 = data1.reshape(data_num, input_dimension_xy, input_dimension_xy, input_dimension_z, 1)
 
     print "Data generated!"
@@ -193,15 +193,23 @@ if __name__ == '__main__':
     encode_vector_flat = tf.reshape(encode_vector, [-1, encoder_para["out_dia"]])
     # Dropout 1
     encode_vector_flat = tf.layers.dropout(encode_vector_flat, rate=0.3, training=True)
+
     # Add a fully connected layer for map
-    with tf.variable_scope("relu_encoder"):
-        map_data_line = relu_layer(encode_vector_flat, encoder_para["out_dia"], concat_paras["dim1"])
+    with tf.variable_scope("relu_encoder_1"):
+        map_data_line_0 = relu_layer(encode_vector_flat, encoder_para["out_dia"], concat_paras["dim1"])
+    with tf.variable_scope("relu_encoder_2"):
+        map_data_line = relu_layer(map_data_line_0, concat_paras["dim1"], concat_paras["dim1"])
     # Add a fully connected layer for states
-    with tf.variable_scope("relu_states"):
-        states_data_line = relu_layer(line_data_1, input_paras["input2_dim"], concat_paras["dim2"])
+    with tf.variable_scope("relu_states_1"):
+        states_data_line_0 = relu_layer(line_data_1, input_paras["input2_dim"], concat_paras["dim2"])
+    with tf.variable_scope("relu_states_2"):
+        states_data_line = relu_layer(states_data_line_0, concat_paras["dim2"], concat_paras["dim2"])
     # Add a fully connected layer for commands
-    with tf.variable_scope("relu_commands"):
-        commands_data_line = relu_layer(line_data_2, input_paras["input3_dim"], concat_paras["dim3"])
+    with tf.variable_scope("relu_commands_1"):
+        commands_data_line_0 = relu_layer(line_data_2, input_paras["input3_dim"], concat_paras["dim3"])
+    with tf.variable_scope("relu_commands_2"):
+        commands_data_line = relu_layer(commands_data_line_0, concat_paras["dim3"], concat_paras["dim3"])
+
     # Concat, Note: dimension parameter should be 1, considering batch size
     concat_vector = tf.concat([map_data_line, states_data_line, commands_data_line], 1)
 
@@ -214,7 +222,7 @@ if __name__ == '__main__':
 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())  # initialze variables
-        restorer.restore(sess, "/home/clarence/log/model_rnn/simulation_cnn_rnn200.ckpt")
+        restorer.restore(sess, "/home/clarence/log/model_rnn/simulation_cnn_rnn400.ckpt")
         state_data_give = np.zeros([1, rnn_paras["state_len"]])
 
         results_to_draw = []

@@ -5,7 +5,7 @@ import math
 import random
 
 input_dimension_xy = 64
-input_dimension_z = 36
+input_dimension_z = 24
 
 encoder_para = {
     "kernel1": 5,
@@ -15,7 +15,7 @@ encoder_para = {
     "pool1": 2,
     "kernel2": 3,
     "stride_xy2": 2,
-    "stride_z2": 3,
+    "stride_z2": 2,
     "channel2": 64,
     "kernel3": 3,
     "stride_xy3": 2,
@@ -90,8 +90,8 @@ def decoder(x, batch_size):
     sz3 = encoder_para["stride_z3"]
     d3 = encoder_para["channel3"]
 
-    size_1 = [batch_size, 64, 64, 36, d1]
-    size_2 = [batch_size, 16, 16, 6, d2]
+    size_1 = [batch_size, 64, 64, 24, d1]
+    size_2 = [batch_size, 16, 16, 4, d2]
     size_3 = [batch_size, 8, 8, 2, d3]
 
     special_sxy1 = sxy1 * p1
