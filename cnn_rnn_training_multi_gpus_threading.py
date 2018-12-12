@@ -35,9 +35,9 @@ labels_filename = ["chg_route1_trial3_swinging/label_data_2018_12_06_17:40:13.cs
                    "hzy_route1_trial2/label_data_2018_12_06_15:58:00.csv",
                    "chg_route1_trial1/label_data_2018_12_06_15:51:38.csv"]
 
-file_path_clouds = [os.path.join(path, clouds) for clouds in clouds_filename]
-file_path_states = [os.path.join(path, states) for states in states_filename]
-file_path_labels = [os.path.join(path, labels) for labels in labels_filename]
+file_path_list_clouds = [os.path.join(path, clouds) for clouds in clouds_filename]
+file_path_list_states = [os.path.join(path, states) for states in states_filename]
+file_path_list_labels = [os.path.join(path, labels) for labels in labels_filename]
 
 
 img_wid = input_side_dimension
@@ -182,7 +182,7 @@ def generate_shuffled_arrays_multifiles(start, stop, shuffle=True):
     start_this = 0
     stop_this = 0
     start_i = 0
-    stop_i =0
+    stop_i = 0
 
     for i in range(len(start)):
         start_i = start_this + start[i]
@@ -301,6 +301,37 @@ class Networkerror(RuntimeError):
         self.args = arg
 
 
+def read_pcl_threading(coord, filename, i_file, num_files):
+    maxInt = sys.maxsize
+    decrement = True
+    data = np.ones([img_num, img_wid, img_wid, img_height, 1])
+    while not coord.should_stop():
+        while decrement:
+            # decrease the maxInt value by factor 10
+            # as long as the OverflowError occurs.
+            decrement = False
+            try:
+                csv.field_size_limit(maxInt)
+                with open(filename, mode='r') as csvfile:
+                    csv_reader = csv.reader(csvfile, delimiter=',', quotechar='|')
+                    i_row = 0
+                    for row in csv_reader:
+                        for i in range(img_wid):
+                            for j in range(img_wid):
+                                for k in range(img_height):
+                                    data[i_row, i, j, k, 0] = row[i * img_wid + j * img_wid + k * img_height]
+                        i_row = i_row + 1
+                # stop threads
+                if i_file == num_files-1:
+                    coord.request_stop()
+
+            except OverflowError:
+                maxInt = int(maxInt / 10)
+                decrement = True
+
+    return data
+
+
 if __name__ == '__main__':
     print "Reading data..."
 
@@ -311,9 +342,18 @@ if __name__ == '__main__':
     data_num_in_files = []
     total_data_num = 0
 
+
+    # thread coordinator
+    filereader_coord = tf.train.Coordinator()
+    # threads for reading csvs
+    threads = [threading.Thread(target=read_pcl_threading, args=(file_path_list_clouds[i_file], i_file, len(file_path_list_clouds))) for i_file in range(len(file_path_list_clouds))]
+    for t in threads:
+        t.start()
+    filereader_coord.join()
+
     for file_seq in range(len(clouds_filename)):
         # Read clouds
-        cloud_filename_this = file_path_clouds[file_seq]
+        cloud_filename_this = file_path_list_clouds[file_seq]
         clouds = open(cloud_filename_this, "r")
         img_num = len(clouds.readlines())
         clouds.close()
@@ -321,7 +361,7 @@ if __name__ == '__main__':
         data_mat_this = read_pcl(data_mat_this, cloud_filename_this)
 
         # Read states
-        state_filename_this = file_path_states[file_seq]
+        state_filename_this = file_path_list_states[file_seq]
         states = open(state_filename_this, "r")
         states_num = len(states.readlines())
         states.close()
@@ -331,7 +371,7 @@ if __name__ == '__main__':
         states_mat_this = read_others(states_mat_this, state_filename_this, states_num_one_line)
 
         # Read labels
-        label_filename_this = file_path_labels[file_seq]
+        label_filename_this = file_path_list_labels[file_seq]
         labels = open(label_filename_this, "r")
         labels_num = len(labels.readlines())
         labels.close()

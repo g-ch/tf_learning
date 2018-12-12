@@ -14,9 +14,12 @@ input_side_dimension = 64
 states_num_one_line = 13
 labels_num_one_line = 4
 
-clouds_filename = "/home/ubuntu/chg_workspace/data/csvs/chg_route1_trial1/pcl_data_2018_12_03_11:34:18.csv"
-states_filename = "/home/ubuntu/chg_workspace/data/csvs/chg_route1_trial1/uav_data_2018_12_03_11:34:18.csv"
-labels_filename = "/home/ubuntu/chg_workspace/data/csvs/chg_route1_trial1/label_data_2018_12_03_11:34:18.csv"
+clouds_filename = \
+    "/home/ubuntu/chg_workspace/data/new_csvs/backward_enable/chg_route1_trial1/pcl_data_2018_12_06_15:43:12.csv"
+states_filename = \
+    "/home/ubuntu/chg_workspace/data/new_csvs/backward_enable/chg_route1_trial1/uav_data_2018_12_06_15:43:12.csv"
+labels_filename = \
+    "/home/ubuntu/chg_workspace/data/new_csvs/backward_enable/chg_route1_trial1/label_data_2018_12_06_15:43:12.csv"
 
 img_wid = input_side_dimension
 img_height = input_side_dimension
@@ -258,7 +261,7 @@ if __name__ == '__main__':
     cube_dim = input_side_dimension
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())  # initialze variables
-        restorer.restore(sess, "/home/ubuntu/chg_workspace/3dcnn/model/model_cnn_rnn_timestep5/simulation_cnn_rnn1600.ckpt")
+        restorer.restore(sess, "/home/ubuntu/chg_workspace/3dcnn/model/model_cnn_rnn_timestep5/simulation_cnn_rnn1000.ckpt")
         state_data_give = np.zeros([1, rnn_paras["state_len"]])
 
         results_to_draw = []

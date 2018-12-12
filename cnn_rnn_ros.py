@@ -7,17 +7,17 @@ from sensor_msgs.msg import PointCloud2
 from std_msgs.msg import Float64
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
+import sys
 
 
 ''' Parameters for training '''
 ''' Batch size defined in Parameters for RNN '''
-test_data_num = 400
 input_side_dimension = 64
 
 img_width = input_side_dimension
 img_height = input_side_dimension
 
-model_path = "/home/ubuntu/chg_workspace/3dcnn/model/model_cnn_rnn_timestep5/simulation_cnn_rnn1600.ckpt"
+model_path = "/home/ubuntu/chg_workspace/3dcnn/model/model_cnn_rnn_timestep5/simulation_cnn_rnn1000.ckpt"
 
 ''' Parameters for RNN'''
 rnn_paras = {
@@ -150,7 +150,8 @@ def refillPclArr(arr, point_x, point_y, point_z, intensity, odom_x, odom_y, odom
 
 def callBackPCL(point):
     global pcl_arr
-    pcl_arr = np.ones(dtype=np.float32, shape=[1, img_width, img_width, img_height, 1])
+    # unknown: zeros
+    pcl_arr = np.zeros(dtype=np.float32, shape=[1, img_width, img_width, img_height, 1])
     for p in pc2.read_points(point, field_names=("x", "y", "z", "intensity"), skip_nans=True):
         pcl_arr = refillPclArr(pcl_arr, p[0], p[1], p[2], p[3]/7.0, position_odom_x, position_odom_y, position_odom_z)
     global new_msg_received
@@ -217,6 +218,8 @@ if __name__ == '__main__':
         restorer.restore(sess, model_path)
         state_data_give = np.zeros([1, rnn_paras["state_len"]])
 
+        print "parameters restored!"
+
         compose_num = [100, 100, 240, 6, 6]
         while not rospy.is_shutdown():
             if new_msg_received:
@@ -231,8 +234,8 @@ if __name__ == '__main__':
 
                 results = sess.run(result, feed_dict={cube_data: pcl_arr, line_data: data2_to_feed,
                                                       state_data: state_data_give})
-                move_cmd.linear.x = results[0, 0]
-                move_cmd.angular.z = results[0, 1]
+                move_cmd.linear.x = results[0, 0] * 0.8
+                move_cmd.angular.z = results[0, 1] * 0.72
 
                 # if move_cmd.linear.x < 0:
                 #     move_cmd.linear.x = 0

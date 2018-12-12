@@ -1,6 +1,8 @@
 import tensorflow as tf
 import numpy as np
 import math
+import matplotlib.pyplot as plt
+import matplotlib as mpl
 import sys
 import csv
 import gc
@@ -10,7 +12,7 @@ batch_size = 20
 learning_rate = 1e-4
 total_epoches = 500
 save_every_n_epoch = 100
-filename = "/home/ubuntu/chg_workspace/data/new_csvs/backward_unable/chg_route1_trial1/pcl_data_2018_12_06_15:51:38.csv"
+filename = "/home/ubuntu/chg_workspace/data/new_csvs/backward_unable/chg_route1_trial1/pcl_data_2018_12_06.csv"
 
 img_wid = input_side_diamension
 img_height = input_side_diamension
@@ -259,6 +261,10 @@ if __name__ == '__main__':
 
             print "epoch: " + str(epoch)
             print('loss=%s' % sess.run(loss, feed_dict={x_: batch_data}))
+
+            if epoch % 5 == 0:
+                decode_pcl = sess.run(decode_result, feed_dict={x_: batch_data})
+
             if (epoch+1) % save_every_n_epoch == 0:
                 saver.save(sess, '/home/ubuntu/chg_workspace/3dcnn/model/'+'simulation_autoencoder_'+str(epoch)+'.ckpt')
 
