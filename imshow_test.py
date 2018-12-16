@@ -45,6 +45,7 @@ def compare_save_3d_to_2d(data1, data2, min_val, max_val, rows, cols, step, name
     #plt.show(cmap=cmap, norm=norm)
     plt.savefig(name)
     plt.cla
+    plt.close()
 
 
 def read_pcl(data, filename):
@@ -82,7 +83,8 @@ if __name__ == "__main__":
     # compare_draw_3d_to_2d(data_mat[2,:,:,:,0], decode_pcl[2,:,:,:,0], 0, 1, 4, 16, 2)
     # print data_mat[2,:,:,:,0]
 
-    file_name = "/home/ubuntu/chg_workspace/data/new_csvs/backward_unable/chg_route1_trial1/pcl_data_2018_12_12_14:03:47.csv"
+    # file_name = "/home/ubuntu/chg_workspace/data/new_csvs/backward_unable/chg_route1_trial1/pcl_data_2018_12_12_14:03:47.csv"
+    file_name = "/home/ubuntu/chg_workspace/data/new_csvs/new_map/encoder/pcl_data_2018_12_15_10:06:01.csv"
     clouds = open(file_name, "r")
     img_num = len(clouds.readlines())
     clouds.close()
@@ -91,9 +93,7 @@ if __name__ == "__main__":
 
     print "data_mat", data_mat
 
-    data_mat[0,5,5,:,0] = 0.14
-
     path = '/home/ubuntu/chg_workspace/data/plots/input_pcl_test/'
     for i in range(180):
         name = path + str(i) + '.png'
-        compare_save_3d_to_2d(data_mat[i*5, :, :, :, 0], data_mat[i*5, :, :, :, 0], 0, 1, 4, 12, 1, name)
+        compare_save_3d_to_2d(data_mat[i, :, :, :, 0], data_mat[i, :, :, :, 0], 0, 1, 4, 12, 1, name)

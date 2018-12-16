@@ -14,24 +14,11 @@ import os
 input_dimension_xy = 64
 input_dimension_z = 24
 
-batch_size = 20
-learning_rate = 1e-4
-total_epoches = 1000
-save_every_n_epoch = 100
-times_per_file = 1
+model_restore_path = "/home/ubuntu/chg_workspace/3dcnn/model/auto_encoder/encoder_003/model/simulation_autoencoder_700.ckpt"
+image_save_path = "/home/ubuntu/chg_workspace/3dcnn/model/auto_encoder/encoder_003/test_plots/"
 
-model_save_path = "/home/ubuntu/chg_workspace/3dcnn/model/auto_encoder/encoder_003/model/"
-image_save_path = "/home/ubuntu/chg_workspace/3dcnn/model/auto_encoder/encoder_003/plots/"
-
-path = "/home/ubuntu/chg_workspace/data/new_csvs/new_map/encoder/training"
-clouds_filename = ["pcl_data_2018_12_15_10:51:54.csv",
-                   "pcl_data_2018_12_15_10:59:07.csv",
-                   "pcl_data_2018_12_15_11:33:52.csv",
-                   "pcl_data_2018_12_15_11:37:17.csv",
-                   "pcl_data_2018_12_15_11:40:32.csv",
-                   "pcl_data_2018_12_15_11:47:35.csv",
-                   "pcl_data_2018_12_15_11:51:31.csv",
-                   "pcl_data_2018_12_15_11:56:45.csv"
+path = "/home/ubuntu/chg_workspace/data/new_csvs/new_map/encoder/test"
+clouds_filename = ["pcl_data_2018_12_15_12:01:34.csv"
                    ]
 
 file_path_list_pcl = [os.path.join(path, cloud) for cloud in clouds_filename]
@@ -298,7 +285,7 @@ def read_pcl_threading(filename_pcl, flags, house):
                 break
 
 
-def tf_training(data_read_flags, data_house, file_num):
+def tf_testing(data_read_flags, data_house, file_num):
     '''Training'''
     dia_xy = input_dimension_xy
     dia_z = input_dimension_z
@@ -307,62 +294,41 @@ def tf_training(data_read_flags, data_house, file_num):
     encode_vector = encoder(x_)
 
     print "encode_vector: ", encode_vector.get_shape()
-    decode_result = decoder(encode_vector, batch_size)
+    decode_result = decoder(encode_vector, 1)
 
-    loss = tf.reduce_mean(tf.square(x_ - decode_result))
-    train_step = tf.train.AdamOptimizer(learning_rate).minimize(loss)
-
-    print "Start training"
+    img_counter = 0
 
     with tf.Session() as sess:
         saver = tf.train.Saver()
-        sess.run(tf.global_variables_initializer())
+        saver.restore(sess, model_restore_path)
+        #sess.run(tf.global_variables_initializer())
 
-        for epoch in range(total_epoches):
-            print "epoch: " + str(epoch)
+        for file_seq in range(file_num):
+            # Check flags to find data
+            isLookingForData = True
+            data_mat = np.array(0)
+            while isLookingForData:
+                time.sleep(0.05)
+                for i_flag in range(len(data_read_flags)):
+                    if data_read_flags[i_flag] == 2:
+                        print "found available data.. "
+                        data_mat = data_house[i_flag]
+                        data_read_flags[i_flag] = 0
+                        isLookingForData = False
+                        print "get data number: ", data_mat.shape[0]
+                        break
+            print "done looking for data.."
 
-            for file_seq in range(file_num):
-                # Check flags to find data
-                isLookingForData = True
-                data_mat = np.array(0)
-                while isLookingForData:
-                    time.sleep(0.05)
-                    for i_flag in range(len(data_read_flags)):
-                        if data_read_flags[i_flag] == 2:
-                            print "found available data.. "
-                            data_mat = data_house[i_flag]
-                            data_read_flags[i_flag] = 0
-                            isLookingForData = False
-                            # print "get data: ", data_mat[0]
-                            break
-                print "done looking for data.."
+            # start batches
+            for seq in range(data_mat.shape[0]):
+                # print "batch:" + str(batch_seq)
+                # get data for this batch
+                this_data = np.reshape(data_mat[seq, :], [1, input_dimension_xy, input_dimension_xy, input_dimension_z, 1])
+                decode_pcl = sess.run(decode_result, feed_dict={x_: this_data})
 
-                # get a random sequence for this file
-                for times in range(times_per_file):
-                    sequence = generate_shuffled_array(0, data_mat.shape[0], shuffle=True)
-                    batch_num = int(data_mat.shape[0] / batch_size)
-                    # start batches
-                    for batch_seq in range(batch_num):
-                        # print "batch:" + str(batch_seq)
-                        # get data for this batch
-                        start_position = batch_seq * batch_size
-                        end_position = (batch_seq + 1) * batch_size
-                        batch_data = get_bacth(sequence[start_position:end_position], data_mat)
-
-                        sess.run(train_step, feed_dict={x_: batch_data})  # training
-
-            print "epoch: " + str(epoch)
-            print('loss=%s' % sess.run(loss, feed_dict={x_: batch_data}))
-
-            if epoch % 10 == 0:
-                decode_pcl = sess.run(decode_result, feed_dict={x_: batch_data})
-                print "batch_data", batch_data[0, :, :, :, 0]
-                save_name = image_save_path + "epoch_" + str(epoch) + ".png"
-                compare_img_save_3d_to_2d(batch_data[0, :, :, :, 0], decode_pcl[0, :, :, :, 0], 0, 1, 4, 12, 1, save_name)
-
-            if epoch % save_every_n_epoch == 0:
-                saver.save(sess,
-                           model_save_path + "simulation_autoencoder_" + str(epoch) + ".ckpt")
+                save_name = image_save_path + str(img_counter) + ".png"
+                compare_img_save_3d_to_2d(this_data[0, :, :, :, 0], decode_pcl[0, :, :, :, 0], 0, 1, 4, 12, 1, save_name)
+                img_counter = img_counter + 1
 
 
 if __name__ == '__main__':
@@ -375,18 +341,18 @@ if __name__ == '__main__':
     data_house = multiprocessing.Manager().list([0, 0, 0, 0])
 
     # Training thread
-    pool.apply_async(tf_training, args=(data_read_flags, data_house, len(file_path_list_pcl)))
+    pool.apply_async(tf_testing, args=(data_read_flags, data_house, len(file_path_list_pcl)))
 
     # Data Reading Thread
     file_list_origin = np.array(file_path_list_pcl)
-    for i_epoch in range(total_epoches):
-        np.random.shuffle(file_list_origin)
-        file_path_list_pcl = file_list_origin.tolist()
 
-        for i_pool in range(file_list_origin.shape[0]):
-            # pool.apply_async(test)
-            filename_pcl = file_path_list_pcl.pop()
-            pool.apply_async(read_pcl_threading, args=(filename_pcl, data_read_flags, data_house))
+    np.random.shuffle(file_list_origin)
+    file_path_list_pcl = file_list_origin.tolist()
+
+    for i_pool in range(file_list_origin.shape[0]):
+        # pool.apply_async(test)
+        filename_pcl = file_path_list_pcl.pop()
+        pool.apply_async(read_pcl_threading, args=(filename_pcl, data_read_flags, data_house))
 
     pool.close()
     pool.join()

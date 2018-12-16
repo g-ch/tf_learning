@@ -1,83 +1,106 @@
 import tensorflow as tf
-import math
 import numpy as np
 import random
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 import sys
 import csv
 import time
 import gc
 import os
-import threading
+from multiprocessing import Pool
+import multiprocessing
+
 
 ''' Parameters for training '''
 ''' Batch size defined in Parameters for RNN '''
-total_data_num = 0  # Anyvalue
-input_side_dimension = 64
-learning_rate = 1e-4
-epoch_num = 2000
-save_every_n_epoch = 200
+learning_rate = 2e-4
+epoch_num = 1000
+save_every_n_epoch = 50
+training_times_simple_epoch = 2
+if_train_encoder = False
 
-states_num_one_line = 13
+model_save_path = "/home/ubuntu/chg_workspace/3dcnn/model/cnn_rnn/01/model/"
+image_save_path = "/home/ubuntu/chg_workspace/3dcnn/model/cnn_rnn/01/plot/"
+
+encoder_model = "/home/ubuntu/chg_workspace/3dcnn/model/auto_encoder/encoder_003/model/simulation_autoencoder_700.ckpt"
+
+''' Parameters for input vectors'''
+input_paras = {
+    "input1_dim_xy": 64,  # point cloud
+    "input1_dim_z": 24,  # point cloud
+    "input2_dim": 8,  # states
+    "input3_dim": 8  # commands
+}
+
+states_compose_num = [3, 3, 1, 1]  # total:  "input2_dim": 8
+commands_compose_each = 2  # Should be "input3_dim": 8  / 4
+
+input_dimension_xy = input_paras["input1_dim_xy"]
+input_dimension_z = input_paras["input1_dim_z"]
+
+img_wid = input_dimension_xy
+img_height = input_dimension_z
+
+''' Parameters for csv files '''
+
+states_num_one_line = 17
 labels_num_one_line = 4
 
 path = "/home/ubuntu/chg_workspace/data/new_csvs/backward_unable"
-clouds_filename = ["chg_route1_trial3_swinging/pcl_data_2018_12_06_17:40:13.csv",
-                   "hzy_route1_trial1/pcl_data_2018_12_06_16:15:18.csv",
-                   "hzy_route1_trial2/pcl_data_2018_12_06_15:58:00.csv",
-                   "chg_route1_trial1/pcl_data_2018_12_06_15:51:38.csv"]
-states_filename = ["chg_route1_trial3_swinging/uav_data_2018_12_06_17:40:13.csv",
-                   "hzy_route1_trial1/uav_data_2018_12_06_16:15:18.csv",
-                   "hzy_route1_trial2/uav_data_2018_12_06_15:58:00.csv",
-                   "chg_route1_trial1/uav_data_2018_12_06_15:51:38.csv"]
-labels_filename = ["chg_route1_trial3_swinging/label_data_2018_12_06_17:40:13.csv",
-                   "hzy_route1_trial1/label_data_2018_12_06_16:15:18.csv",
-                   "hzy_route1_trial2/label_data_2018_12_06_15:58:00.csv",
-                   "chg_route1_trial1/label_data_2018_12_06_15:51:38.csv"]
+clouds_filename = ["chg_route1_trial3_swinging/pcl_data_2018_12_12_14:26:38.csv",
+                   "hzy_route1_trial1/pcl_data_2018_12_12_14:29:40.csv",
+                   "hzy_route1_trial2/pcl_data_2018_12_12_14:40:02.csv",
+                   "chg_route1_trial1/pcl_data_2018_12_12_14:03:47.csv"]
+states_filename = ["chg_route1_trial3_swinging/uav_data_2018_12_12_14:26:38.csv",
+                   "hzy_route1_trial1/uav_data_2018_12_12_14:29:40.csv",
+                   "hzy_route1_trial2/uav_data_2018_12_12_14:40:02.csv",
+                   "chg_route1_trial1/uav_data_2018_12_12_14:03:47.csv"]
+labels_filename = ["chg_route1_trial3_swinging/label_data_2018_12_12_14:26:38.csv",
+                   "hzy_route1_trial1/label_data_2018_12_12_14:29:40.csv",
+                   "hzy_route1_trial2/label_data_2018_12_12_14:40:02.csv",
+                   "chg_route1_trial1/label_data_2018_12_12_14:03:47.csv"]
 
-file_path_list_clouds = [os.path.join(path, clouds) for clouds in clouds_filename]
-file_path_list_states = [os.path.join(path, states) for states in states_filename]
-file_path_list_labels = [os.path.join(path, labels) for labels in labels_filename]
-
-
-img_wid = input_side_dimension
-img_height = input_side_dimension
+file_path_clouds = [os.path.join(path, clouds) for clouds in clouds_filename]
+file_path_states = [os.path.join(path, states) for states in states_filename]
+file_path_labels = [os.path.join(path, labels) for labels in labels_filename]
 
 ''' Parameters for Computer'''
 gpu_num = 2
 
 ''' Parameters for RNN'''
 rnn_paras = {
-    "raw_batch_size": 15,
+    "raw_batch_size": 20,
     "time_step": 5,
-    "state_len": 256,
-    "input_len": 2500,
+    "state_len": 128,
+    "input_len": 576,
     "output_len": 2
 }
 
 ''' Parameters for concat values'''
 concat_paras = {
-    "dim1": 2048,  # should be the same as encoder out dim
-    "dim2": 452  # dim1 + dim2 should be input_len of the rnn, for line vector
+    "dim1": 512,  # should be the same as encoder out dim
+    "dim2": 32,
+    "dim3": 32  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
 }
 
 ''' Parameters for CNN encoder'''
 encoder_para = {
     "kernel1": 5,
-    "stride1": 2,  # do not change
+    "stride_xy1": 2,
+    "stride_z1": 3,
     "channel1": 32,
+    "pool1": 2,
     "kernel2": 3,
-    "stride2": 1,  # do not change
-    "channel2": 32,
-    "pool1": 4,  # 2 or 4 recommended, carefully choose according to input_side_dimmension to keep values interger
-    "pool2": 2,  # 2 or 4 recommended, carefully choose according to input_side_dimmension to keep values interger
-    "outdim": 2048
+    "stride_xy2": 2,
+    "stride_z2": 2,
+    "channel2": 64,
+    "kernel3": 3,
+    "stride_xy3": 2,
+    "stride_z3": 2,
+    "channel3": 128,
+    "out_dia": 2048
 }
-
-pooled_side_len1 = input_side_dimension
-pooled_side_len2 = int(input_side_dimension / (encoder_para["pool1"] * encoder_para["stride1"]))
-
-pooled_size = int(input_side_dimension * input_side_dimension * input_side_dimension * encoder_para["channel2"] / math.pow(encoder_para["pool1"]*encoder_para["pool2"]*encoder_para["stride1"], 3))
 
 
 def myrnn(x, input_len, output_len, raw_batch_size, time_step, state_len):
@@ -88,12 +111,16 @@ def myrnn(x, input_len, output_len, raw_batch_size, time_step, state_len):
     output_len can be given as you want(same as label dimension)
     """
     with tf.variable_scope("rnn"):
-        w = tf.get_variable("weight_x", [input_len, state_len], initializer=tf.truncated_normal_initializer(stddev=0.1)) #tf.random_normal_initializer)
-        u = tf.get_variable("weight_s", [state_len, state_len], initializer=tf.truncated_normal_initializer(stddev=0.1)) #tf.random_normal_initializer)
-        v = tf.get_variable("weight_y", [state_len, output_len], initializer=tf.truncated_normal_initializer(stddev=0.1)) #tf.random_normal_initializer)
+        w = tf.get_variable("weight_x", [input_len, state_len],
+                            initializer=tf.truncated_normal_initializer(stddev=0.1))  # tf.random_normal_initializer)
+        u = tf.get_variable("weight_s", [state_len, state_len],
+                            initializer=tf.truncated_normal_initializer(stddev=0.1))  # tf.random_normal_initializer)
+        v = tf.get_variable("weight_y", [state_len, output_len],
+                            initializer=tf.truncated_normal_initializer(stddev=0.1))  # tf.random_normal_initializer)
         b = tf.get_variable("bias", [output_len], initializer=tf.constant_initializer(0.0))
 
-        state = tf.get_variable("state", [raw_batch_size, state_len], trainable=False, initializer=tf.constant_initializer(0.0))
+        state = tf.get_variable("state", [raw_batch_size, state_len], trainable=False,
+                                initializer=tf.constant_initializer(0.0))
 
         for seq in range(time_step):
             x_temp = x[:, seq, :]  # might not be right
@@ -104,8 +131,9 @@ def myrnn(x, input_len, output_len, raw_batch_size, time_step, state_len):
 
 def conv3d_relu(x, kernel_shape, bias_shape, strides):
     """ 3D convolution For 3D CNN encoder """
-    weights = tf.get_variable("weights_con", kernel_shape)  # truncated_normal_initializer(stddev=0.1))
-    biases = tf.get_variable("bias_con", bias_shape)
+    ''' Parameters won't change in this training file '''
+    weights = tf.get_variable("weights_con", kernel_shape, trainable=if_train_encoder)
+    biases = tf.get_variable("bias_con", bias_shape, trainable=if_train_encoder)
     conv = tf.nn.conv3d(x, weights, strides=strides, padding="SAME")
     return tf.nn.relu(conv + biases)
 
@@ -115,32 +143,43 @@ def max_pool(x, kernel_shape, strides):
     return tf.nn.max_pool3d(x, ksize=kernel_shape, strides=strides, padding='SAME')
 
 
-def encoder(x):
-    """
-    3D CNN encoder function
-    x: [raw_batch_size, input_len_x, input_len_y, input_len_z, 1]
-    """
+def relu_layer(x, x_diamension, neurals_num):
+    weights = tf.get_variable("weights", [x_diamension, neurals_num],
+                              initializer=tf.truncated_normal_initializer(stddev=0.1))
+    biases = tf.get_variable("bias", [neurals_num], initializer=tf.constant_initializer(0.1))
+    return tf.nn.relu(tf.matmul(x, weights) + biases)
 
+
+def encoder(x):
     k1 = encoder_para["kernel1"]
-    s1 = encoder_para["stride1"]
+    sxy1 = encoder_para["stride_xy1"]
+    sz1 = encoder_para["stride_z1"]
     d1 = encoder_para["channel1"]
     p1 = encoder_para["pool1"]
 
     k2 = encoder_para["kernel2"]
-    s2 = encoder_para["stride2"]
+    sxy2 = encoder_para["stride_xy2"]
+    sz2 = encoder_para["stride_z2"]
     d2 = encoder_para["channel2"]
-    p2 = encoder_para["pool2"]
+
+    k3 = encoder_para["kernel3"]
+    sxy3 = encoder_para["stride_xy3"]
+    sz3 = encoder_para["stride_z3"]
+    d3 = encoder_para["channel3"]
 
     with tf.variable_scope("encoder"):
         with tf.variable_scope("conv1"):
-            conv1 = conv3d_relu(x, [k1, k1, k1, 1, d1], [d1], [1, s1, s1, s1, 1])
+            conv1 = conv3d_relu(x, [k1, k1, k1, 1, d1], [d1], [1, sxy1, sxy1, sz1, 1])
+
+        with tf.variable_scope("pool1"):
             max_pool1 = max_pool(conv1, [1, p1, p1, p1, 1], [1, p1, p1, p1, 1])
 
         with tf.variable_scope("conv2"):
-            conv2 = conv3d_relu(max_pool1, [k2, k2, k2, d1, d2], [d2], [1, s2, s2, s2, 1])
-            max_pool2 = max_pool(conv2, [1, p2, p2, p2, 1], [1, p2, p2, p2, 1])
-            # print "max_pool2 ", max_pool2
-            return max_pool2
+            conv2 = conv3d_relu(max_pool1, [k2, k2, k2, d1, d2], [d2], [1, sxy2, sxy2, sz2, 1])
+
+        with tf.variable_scope("conv3"):
+            conv3 = conv3d_relu(conv2, [k3, k3, k3, d2, d3], [d3], [1, sxy3, sxy3, sz3, 1])
+            return conv3
 
 
 def average_gradients(tower_grads):
@@ -158,6 +197,42 @@ def average_gradients(tower_grads):
     return average_grads
 
 
+# draw by axis z direction
+def compare_draw_3d_to_2d(data1, data2, min_val, max_val, rows, cols, step):
+    """
+    To compare two 3 dimension array by image slices
+    :param data1: data to compare, 3 dimension array
+    :param data2: should have the same size as data1
+    :param min_val: minimum value in data1 and data2
+    :param max_val: maximum value in data1 and data2
+    :param rows: row number of the figure
+    :param cols: col number of the figure
+    :param step: step in z axis to show
+    :return:
+    """
+    colors = ['purple', 'yellow']
+    bounds = [min_val, max_val]
+    cmap = mpl.colors.ListedColormap(colors)
+    norm = mpl.colors.BoundaryNorm(bounds, cmap.N)
+
+    f, a = plt.subplots(rows, cols, figsize=(cols, rows))
+
+    # for scale
+    data1_copy = np.array(tuple(data1))
+    data2_copy = np.array(tuple(data2))
+    data1_copy[0, 0, :] = min_val
+    data2_copy[0, 0, :] = min_val
+    data1_copy[0, 1, :] = max_val
+    data2_copy[0, 1, :] = max_val
+
+    for i in range(cols):
+        for j in range(rows / 2):
+            a[2 * j][i].imshow(data1_copy[:, :, (j * cols + i) * step])
+            a[2 * j + 1][i].imshow(data2_copy[:, :, (j * cols + i) * step])
+
+    plt.show(cmap=cmap, norm=norm)
+
+
 def generate_shuffled_array(start, stop, shuffle=True):
     """
     Give a length and return a shuffled one dimension array using data from start to stop, stop not included
@@ -169,40 +244,7 @@ def generate_shuffled_array(start, stop, shuffle=True):
     return array
 
 
-def generate_shuffled_arrays_multifiles(start, stop, shuffle=True):
-    """
-    Give a length and return a shuffled one dimension array using data from start to stop, stop not included
-    Used as shuffled sequence
-    :param start: list of start positions in files, commonly (step-1)
-    :param stop: list of end positions in files, commonly (data number)
-    :param shuffle: if shuffle
-    :return: one array
-    """
-    array = []
-    start_this = 0
-    stop_this = 0
-    start_i = 0
-    stop_i = 0
-
-    for i in range(len(start)):
-        start_i = start_this + start[i]
-        stop_i = stop_this + stop[i]
-
-        array_this = np.arange(start_i, stop_i)
-        if i == 0:
-            array = array_this
-        else:
-            array = np.concatenate([array, array_this], axis=0)
-
-        start_this = start_this + stop[i]
-        stop_this = stop_this + stop[i]
-
-    if shuffle:
-        np.random.shuffle(array)
-    return array
-
-
-def get_bacth_step(seq, time_step, data):
+def get_batch_step(seq, time_step, data):
     """
     get values of the seq in data(array), together with time_step back values
     :param seq: sequence to get, 0 or positive integers in one dimention array
@@ -225,7 +267,7 @@ def get_bacth_step(seq, time_step, data):
     return result
 
 
-def get_bacth(seq, data):
+def get_batch(seq, data):
     """
     get values of the seq in data(array), together with time_step back values
     :param seq: sequence to get, 0 or positive integers in one dimention array
@@ -244,6 +286,75 @@ def get_bacth(seq, data):
     return result
 
 
+def read_threading(filename_pcl, filename_state, filename_label, flags, house):
+    """
+    Read data thread function.
+    :param filename_pcl:  pcl filename
+    :param filename_state: state filename
+    :param filename_label: label filename
+    :param flags: flags to find a empty place
+    :param house: house to store data, composed of [[[pcl], [state1], [state2], [label]],   [],   [],   []...]
+    :return:
+    """
+    # print "Start reading..."
+    ''' Read pcl data first '''
+    clouds = open(filename_pcl, "r")
+    img_num = len(clouds.readlines())
+    clouds.close()
+    data_pcl = np.zeros([img_num, img_wid, img_wid, img_height, 1])
+    read_pcl(data_pcl, filename_pcl)
+    print "pcl data get! img_num = " + str(img_num)
+
+    # Just to make sure the data is read correctly
+    # compare_draw_3d_to_2d(data_pcl[10, :, :, :, 0], data_pcl[10, :, :, :, 0], 0, 1, 2, 12, 1)
+
+    ''' Read state data '''
+    data_states = np.zeros([img_num, states_num_one_line])
+    read_others(data_states, filename_state, states_num_one_line)
+
+    ''' Read label data '''
+    data_labels = np.zeros([img_num, labels_num_one_line])
+    read_others(data_labels, filename_label, labels_num_one_line)
+
+    ''' Get useful states and labels '''
+    states_input_current_yaw_x = np.concatenate([np.reshape(data_states[:, 10], [img_num, 1])
+                                                 for i in range(states_compose_num[0])], axis=1)  # current yaw x
+    states_input_current_yaw_y = np.concatenate([np.reshape(data_states[:, 11], [img_num, 1])
+                                                 for i in range(states_compose_num[1])], axis=1)  # current yaw y
+    states_input_linear_vel = np.concatenate([np.reshape(data_states[:, 2], [img_num, 1])
+                                              for i in range(states_compose_num[2])], axis=1)  # linear vel
+    states_input_angular_vel = np.concatenate([np.reshape(data_states[:, 3], [img_num, 1])
+                                               for i in range(states_compose_num[3])], axis=1)  # angular vel
+    states_input = np.concatenate([states_input_current_yaw_x, states_input_current_yaw_y,
+                                   states_input_linear_vel, states_input_angular_vel], axis=1)
+
+    commands_input_forward = np.concatenate([np.reshape(data_states[:, 13], [img_num, 1])
+                                             for i in range(commands_compose_each)], axis=1)  # command: forward
+    commands_input_backward = np.concatenate([np.reshape(data_states[:, 14], [img_num, 1])
+                                              for i in range(commands_compose_each)], axis=1)  # command: backward
+    commands_input_left = np.concatenate([np.reshape(data_states[:, 15], [img_num, 1])
+                                          for i in range(commands_compose_each)], axis=1)  # command: left
+    commands_input_right = np.concatenate([np.reshape(data_states[:, 16], [img_num, 1])
+                                           for i in range(commands_compose_each)], axis=1)  # command: right
+    commands_input = np.concatenate([commands_input_forward, commands_input_backward,
+                                     commands_input_left, commands_input_right], axis=1)
+
+    labels_ref = data_labels[:, 0:2]  # vel_cmd ref, angular_cmd ref
+
+    ''' Store data to house '''
+    looking_for_free_space_flag = True
+    while looking_for_free_space_flag:
+        time.sleep(0.05)
+        for i_flag in range(len(flags)):
+            if flags[i_flag] == 0:
+                flags[i_flag] = 1
+                print "found available space, copy data... "
+                house[i_flag] = [data_pcl, states_input, commands_input, labels_ref]
+                flags[i_flag] = 2
+                looking_for_free_space_flag = False
+                break
+
+
 def read_pcl(data, filename):
     maxInt = sys.maxsize
     decrement = True
@@ -260,13 +371,11 @@ def read_pcl(data, filename):
                     for i in range(img_wid):
                         for j in range(img_wid):
                             for k in range(img_height):
-                                data[i_row, i, j, k, 0] = row[i * img_wid + j * img_wid + k * img_height]
+                                data[i_row, i, j, k, 0] = row[i * img_wid * img_height + j * img_height + k]
                     i_row = i_row + 1
         except OverflowError:
             maxInt = int(maxInt / 10)
             decrement = True
-
-    return data
 
 
 def read_others(data, filename, num_one_line):
@@ -289,150 +398,27 @@ def read_others(data, filename, num_one_line):
             maxInt = int(maxInt / 10)
             decrement = True
 
-    return data
 
-
-
-class Networkerror(RuntimeError):
+def tf_training(data_read_flags, data_house, file_num):
     """
-    Error print
+    Main training function
+    :param data_read_flags: flag to find stored data
+    :param data_house: where the data stores
+    :param file_num: total file number of input csvs
+    :return:
     """
-    def __init__(self, arg):
-        self.args = arg
-
-
-def read_pcl_threading(coord, filename, i_file, num_files):
-    maxInt = sys.maxsize
-    decrement = True
-    data = np.ones([img_num, img_wid, img_wid, img_height, 1])
-    while not coord.should_stop():
-        while decrement:
-            # decrease the maxInt value by factor 10
-            # as long as the OverflowError occurs.
-            decrement = False
-            try:
-                csv.field_size_limit(maxInt)
-                with open(filename, mode='r') as csvfile:
-                    csv_reader = csv.reader(csvfile, delimiter=',', quotechar='|')
-                    i_row = 0
-                    for row in csv_reader:
-                        for i in range(img_wid):
-                            for j in range(img_wid):
-                                for k in range(img_height):
-                                    data[i_row, i, j, k, 0] = row[i * img_wid + j * img_wid + k * img_height]
-                        i_row = i_row + 1
-                # stop threads
-                if i_file == num_files-1:
-                    coord.request_stop()
-
-            except OverflowError:
-                maxInt = int(maxInt / 10)
-                decrement = True
-
-    return data
-
-
-if __name__ == '__main__':
-    print "Reading data..."
-
-    data_mat = []
-    states_input = []
-    labels_ref = []
-
-    data_num_in_files = []
-    total_data_num = 0
-
-
-    # thread coordinator
-    filereader_coord = tf.train.Coordinator()
-    # threads for reading csvs
-    threads = [threading.Thread(target=read_pcl_threading, args=(file_path_list_clouds[i_file], i_file, len(file_path_list_clouds))) for i_file in range(len(file_path_list_clouds))]
-    for t in threads:
-        t.start()
-    filereader_coord.join()
-
-    for file_seq in range(len(clouds_filename)):
-        # Read clouds
-        cloud_filename_this = file_path_list_clouds[file_seq]
-        clouds = open(cloud_filename_this, "r")
-        img_num = len(clouds.readlines())
-        clouds.close()
-        data_mat_this = np.ones([img_num, img_wid, img_wid, img_height, 1])
-        data_mat_this = read_pcl(data_mat_this, cloud_filename_this)
-
-        # Read states
-        state_filename_this = file_path_list_states[file_seq]
-        states = open(state_filename_this, "r")
-        states_num = len(states.readlines())
-        states.close()
-        if states_num != img_num:
-            raise Networkerror("states file mismatch!")
-        states_mat_this = np.zeros([states_num, states_num_one_line])
-        states_mat_this = read_others(states_mat_this, state_filename_this, states_num_one_line)
-
-        # Read labels
-        label_filename_this = file_path_list_labels[file_seq]
-        labels = open(label_filename_this, "r")
-        labels_num = len(labels.readlines())
-        labels.close()
-        if labels_num != states_num:
-            raise Networkerror("labels file mismatch!")
-        labels_mat_this = np.zeros([labels_num, labels_num_one_line])
-        labels_mat_this = read_others(labels_mat_this, label_filename_this, labels_num_one_line)
-
-        ''' Choose useful states and labels '''
-        compose_num = [100, 100, 240, 6, 6]
-        # check total number
-        num_total = 0
-        for num_x in compose_num:
-            num_total = num_total + num_x
-        if num_total != concat_paras["dim2"]:
-            raise Networkerror("compose_num does not match concat_paras!")
-        # concat for input2
-        states_input_current_yaw_x = np.concatenate([np.reshape(states_mat_this[:, 10], [states_num, 1]) for i in range(compose_num[0])], axis=1)  # current yaw x
-        states_input_current_yaw_y = np.concatenate([np.reshape(states_mat_this[:, 11], [states_num, 1]) for i in range(compose_num[1])], axis=1)  # current yaw y
-        states_input_delt_yaw = np.concatenate([np.reshape(states_mat_this[:, 12], [states_num, 1]) for i in range(compose_num[2])], axis=1)  # delt_yaw
-        states_input_linear_vel = np.concatenate([np.reshape(states_mat_this[:, 2], [states_num, 1]) for i in range(compose_num[3])], axis=1)  # linear vel
-        states_input_angular_vel = np.concatenate([np.reshape(states_mat_this[:, 3], [states_num, 1]) for i in range(compose_num[4])], axis=1)  # angular vel
-
-        states_input_this = np.concatenate([states_input_current_yaw_x, states_input_current_yaw_y, states_input_delt_yaw, states_input_linear_vel, states_input_angular_vel], axis=1)
-
-        labels_ref_this = labels_mat_this[:, 0:2]  # vel_cmd, angular_cmd
-
-        total_data_num = total_data_num + img_num  # total pointclouds number
-        data_num_in_files.append(img_num)
-
-        # concat for all files
-        if file_seq == 0:
-            data_mat = data_mat_this
-            states_input = states_input_this
-            labels_ref = labels_ref_this
-        else:
-            data_mat = np.concatenate([data_mat, data_mat_this], axis=0)
-            states_input = np.concatenate([states_input, states_input_this], axis=0)
-            labels_ref = np.concatenate([labels_ref, labels_ref_this], axis=0)
-
-    print "Data reading is completed!"
-
-    ''' Calculate start and stop position for training list '''
-    start_position_list = []
-    stop_position_list = []
-
-    for file_seq in range(len(clouds_filename)):
-        start_position_list.append(rnn_paras["time_step"] - 1)
-        stop_position_list.append(data_num_in_files[file_seq])
-
     ''' Calculate batch size '''
     batch_size_one_gpu = rnn_paras["raw_batch_size"]
     batch_size = batch_size_one_gpu * gpu_num
-    batch_num = int((total_data_num - rnn_paras["time_step"] * len(clouds_filename)) / batch_size)  # issue
 
     ''' Graph building '''
     with tf.device("/cpu:0"):
         global_step = tf.train.get_or_create_global_step()
         tower_grads = []
-        cube_data = tf.placeholder("float", name="cube_data", shape=[None, input_side_dimension, input_side_dimension, input_side_dimension, 1])
-        line_data = tf.placeholder("float", name="line_data", shape=[None, concat_paras["dim2"]])
+        cube_data = tf.placeholder("float", name="cube_data", shape=[None, input_dimension_xy, input_dimension_xy,
+                                                                     input_dimension_z, 1])
+        line_data_1 = tf.placeholder("float", name="line_data", shape=[None, input_paras["input2_dim"]])  # States
+        line_data_2 = tf.placeholder("float", name="line_data", shape=[None, input_paras["input3_dim"]])  # commands
         reference = tf.placeholder("float", name="reference", shape=[None, rnn_paras["output_len"]])
 
         # Optimizer
@@ -441,21 +427,54 @@ if __name__ == '__main__':
             for gpu_seq in range(gpu_num):
                 with tf.device("/gpu:%d" % gpu_seq):
                     # Set data for each gpu
-                    cube_data_this_gpu = cube_data[gpu_seq*batch_size_one_gpu*rnn_paras["time_step"]:(gpu_seq+1)*batch_size_one_gpu*rnn_paras["time_step"], :, :, :, :]
-                    line_data_this_gpu = line_data[gpu_seq*batch_size_one_gpu*rnn_paras["time_step"]:(gpu_seq+1)*batch_size_one_gpu*rnn_paras["time_step"], :]
-                    reference_this_gpu = reference[gpu_seq*batch_size_one_gpu:(gpu_seq+1)*batch_size_one_gpu, :]
+                    cube_data_this_gpu = cube_data[gpu_seq * batch_size_one_gpu * rnn_paras["time_step"]:
+                                                   (gpu_seq + 1) * batch_size_one_gpu * rnn_paras["time_step"], :, :, :, :]
+                    line_data_1_this_gpu = line_data_1[gpu_seq * batch_size_one_gpu * rnn_paras["time_step"]:
+                                                       (gpu_seq + 1) * batch_size_one_gpu * rnn_paras["time_step"], :]
+                    line_data_2_this_gpu = line_data_2[gpu_seq * batch_size_one_gpu * rnn_paras["time_step"]:
+                                                       (gpu_seq + 1) * batch_size_one_gpu * rnn_paras["time_step"], :]
+                    reference_this_gpu = reference[gpu_seq * batch_size_one_gpu:(gpu_seq + 1) * batch_size_one_gpu, :]
 
                     # 3D CNN
                     encode_vector = encoder(cube_data_this_gpu)
                     # To flat vector
-                    encode_vector_flat = tf.reshape(encode_vector, [-1, encoder_para["outdim"]])
+                    encode_vector_flat = tf.reshape(encode_vector, [-1, encoder_para["out_dia"]])
+                    # Dropout 1
+                    encode_vector_flat = tf.layers.dropout(encode_vector_flat, rate=0.3, training=True)
+
+                    # Add a fully connected layer for map
+                    with tf.variable_scope("relu_encoder_1"):
+                        map_data_line_0 = relu_layer(encode_vector_flat, encoder_para["out_dia"], concat_paras["dim1"])
+                    with tf.variable_scope("relu_encoder_2"):
+                        map_data_line = relu_layer(map_data_line_0, concat_paras["dim1"], concat_paras["dim1"])
+                    # Add a fully connected layer for states
+                    with tf.variable_scope("relu_states_1"):
+                        states_data_line_0 = relu_layer(line_data_1_this_gpu, input_paras["input2_dim"],
+                                                        concat_paras["dim2"])
+                    with tf.variable_scope("relu_states_2"):
+                        states_data_line = relu_layer(states_data_line_0, concat_paras["dim2"], concat_paras["dim2"])
+                    # Add a fully connected layer for commands
+                    with tf.variable_scope("relu_commands_1"):
+                        commands_data_line_0 = relu_layer(line_data_2_this_gpu, input_paras["input3_dim"],
+                                                          concat_paras["dim3"])
+                    with tf.variable_scope("relu_commands_2"):
+                        commands_data_line = relu_layer(commands_data_line_0, concat_paras["dim3"],
+                                                        concat_paras["dim3"])
+
                     # Concat, Note: dimension parameter should be 1, considering batch size
-                    concat_vector = tf.concat([encode_vector_flat, line_data_this_gpu], 1)
-                    # Dropout
-                    concat_vector = tf.layers.dropout(concat_vector, rate=0.3, training=True)
+                    concat_vector = tf.concat([map_data_line, states_data_line, commands_data_line], 1)
+
+                    # Add a fully connected layer for all input before rnn
+                    with tf.variable_scope("relu_all_1"):
+                        relu_data_all = relu_layer(concat_vector, rnn_paras["input_len"],
+                                                   rnn_paras["input_len"])
+                    # Dropout 2
+                    relu_data_droped = tf.layers.dropout(relu_data_all, rate=0.3, training=True)
                     # Feed to rnn
-                    rnn_input = tf.reshape(concat_vector, [batch_size_one_gpu, rnn_paras["time_step"], rnn_paras["input_len"]])
-                    result_this_gpu = myrnn(rnn_input, rnn_paras["input_len"], rnn_paras["output_len"], batch_size_one_gpu, rnn_paras["time_step"], rnn_paras["state_len"])
+                    rnn_input = tf.reshape(relu_data_droped, [rnn_paras["raw_batch_size"], rnn_paras["time_step"],
+                                                           rnn_paras["input_len"]])
+                    result_this_gpu = myrnn(rnn_input, rnn_paras["input_len"], rnn_paras["output_len"],
+                                            rnn_paras["raw_batch_size"], rnn_paras["time_step"], rnn_paras["state_len"])
 
                     tf.get_variable_scope().reuse_variables()
 
@@ -463,7 +482,8 @@ if __name__ == '__main__':
                     temp_to_merge1 = tf.reshape(result_this_gpu[:, 0], [tf.shape(result_this_gpu)[0], 1])
                     temp_to_merge2 = tf.zeros([tf.shape(result_this_gpu)[0], 1])
                     result_merged = tf.concat([temp_to_merge1, temp_to_merge2], axis=1)  # keep linear velocity
-                    loss = tf.reduce_mean(tf.square(reference_this_gpu - result_this_gpu) + 0.2 * tf.square(tf.abs(result_merged) - result_merged)) # expect a positive linear velocity
+                    loss = tf.reduce_mean(tf.square(reference_this_gpu - result_this_gpu) + 0.2 * tf.square(
+                        tf.abs(result_merged) - result_merged))  # expect a positive linear velocity
                     grads = train_step.compute_gradients(loss)
                     tower_grads.append(grads)
 
@@ -476,9 +496,7 @@ if __name__ == '__main__':
 
         ''' Training '''
         print "Start training"
-        print "Training data number = " + str(total_data_num)
         print "batch_size = " + str(batch_size)
-        print "batch_num = " + str(batch_num)
         print "Total epoch num = " + str(epoch_num)
         print "Will save every " + str(save_every_n_epoch) + " epoches"
 
@@ -494,53 +512,119 @@ if __name__ == '__main__':
 
         with tf.Session(config=config) as sess:
             sess.run(tf.global_variables_initializer())  # initialze variables
-            restorer.restore(sess, "/home/ubuntu/chg_workspace/3dcnn/model/simulation_autoencoder_450.ckpt")
+            restorer.restore(sess, encoder_model)
 
-            # start epoches
+            # start epochs
             for epoch in range(epoch_num):
                 print "epoch: " + str(epoch)
-                # get a random sequence for this epoch
-                print "getting a random sequence for this epoch..."
                 t0 = time.time()
-                sequence = generate_shuffled_arrays_multifiles(start_position_list, stop_position_list, shuffle=True)
 
-                # start batches
-                for batch_seq in range(batch_num):
-                    print "batch" + str(batch_seq)
-                    # get data for this batch
-                    start_position = batch_seq * batch_size
-                    end_position = (batch_seq+1) * batch_size
-                    data1_batch = get_bacth_step(sequence[start_position:end_position], rnn_paras["time_step"], data_mat)
-                    data2_batch = get_bacth_step(sequence[start_position:end_position], rnn_paras["time_step"], states_input)
-                    label_batch = get_bacth(sequence[start_position:end_position], labels_ref)
+                ''' waiting for data '''
+                for file_seq in range(file_num):
+                    # Check flags to find data
+                    looking_for_data_flag = True
 
-                    # train
-                    sess.run(train_op, feed_dict={cube_data: data1_batch, line_data: data2_batch, reference: label_batch})  # training
+                    data_mat_pcl = np.array(0)
+                    data_mat_state = np.array(0)
+                    data_mat_command = np.array(0)
+                    data_mat_label = np.array(0)
+                    data_num = 0
 
-                print('loss for this epoch=%s' % sess.run(loss, feed_dict={cube_data: data1_batch, line_data: data2_batch, reference: label_batch}))
+                    while looking_for_data_flag:
+                        time.sleep(0.05)
+                        for i_flag in range(len(data_read_flags)):
+                            if data_read_flags[i_flag] == 2:
+                                print "found available data.. "
+                                data_mat_pcl = data_house[i_flag][0]
+                                data_mat_state = data_house[i_flag][1]
+                                data_mat_command = data_house[i_flag][2]
+                                data_mat_label = data_house[i_flag][3]
+                                data_num = data_house[i_flag][3].shape[0]
+                                data_read_flags[i_flag] = 0
+                                looking_for_data_flag = False
+                                break
+                    print "done loading data.."
 
-                print "Time: " + str(time.time()-t0)
+                    batch_num = int((data_num - rnn_paras["time_step"]) / batch_size)
 
-                if epoch % 100 == 0:
+                    for training_time_this_file in range(training_times_simple_epoch):
+                        # get a random sequence for this file
+                        sequence = generate_shuffled_array(rnn_paras["time_step"], data_num, shuffle=True)
+
+                        # start batches
+                        for batch_seq in range(batch_num):
+                            print "batch" + str(batch_seq)
+                            # get data for this batch
+                            start_position = batch_seq * batch_size
+                            end_position = (batch_seq + 1) * batch_size
+                            data_pcl_batch = get_batch_step(sequence[start_position:end_position],
+                                                            rnn_paras["time_step"], data_mat_pcl)
+                            data_state_batch = get_batch_step(sequence[start_position:end_position],
+                                                              rnn_paras["time_step"], data_mat_state)
+                            data_command_batch = get_batch_step(sequence[start_position:end_position],
+                                                                rnn_paras["time_step"], data_mat_command)
+                            label_batch = get_batch(sequence[start_position:end_position], data_mat_label)
+
+                            # train
+                            sess.run(train_op, feed_dict={cube_data: data_pcl_batch, line_data_1: data_state_batch,
+                                                          line_data_2: data_command_batch, reference: label_batch})
+
+                print "Epoch " + str(epoch) + " finished!  Time: " + str(time.time() - t0)
+
+                if epoch % 10 == 0:
                     # get data for validation
-                    start_position_test = random.randint(0, batch_num-1) * batch_size
+                    start_position_test = random.randint(0, batch_num - 1) * batch_size
                     end_position_test = start_position_test + batch_size
-                    data1_batch_test = get_bacth_step(sequence[start_position_test:end_position_test], rnn_paras["time_step"],
-                                                 data_mat)
-                    data2_batch_test = get_bacth_step(sequence[start_position_test:end_position_test], rnn_paras["time_step"],
-                                                 states_input)
-                    label_batch_test = get_bacth(sequence[start_position_test:end_position_test], labels_ref)
+                    data_pcl_batch_test = get_batch_step(sequence[start_position_test:end_position_test],
+                                                         rnn_paras["time_step"], data_mat_pcl)
+                    data_state_batch_test = get_batch_step(sequence[start_position_test:end_position_test],
+                                                           rnn_paras["time_step"], data_mat_state)
+                    data_command_batch_test = get_batch_step(sequence[start_position_test:end_position_test],
+                                                             rnn_paras["time_step"], data_mat_command)
+                    label_batch_test = get_batch(sequence[start_position_test:end_position_test], data_mat_label)
 
                     # draw
-                    results = sess.run(result_this_gpu, feed_dict={cube_data: data1_batch_test, line_data: data2_batch_test, reference: label_batch_test})
+                    results = sess.run(result_this_gpu,
+                                       feed_dict={cube_data: data_pcl_batch_test, line_data_1: data_state_batch_test,
+                                                  line_data_2: data_command_batch_test, reference: label_batch_test})
+
                     plt.plot(range(batch_size_one_gpu), results[:, 0], color='r')
                     plt.plot(range(batch_size_one_gpu), label_batch_test[:batch_size_one_gpu, 0], color='m')
                     plt.plot(range(batch_size_one_gpu), results[:, 1], color='g')
                     plt.plot(range(batch_size_one_gpu), label_batch_test[:batch_size_one_gpu, 1], color='b')
-                    plt.show()
+                    plt.savefig(image_save_path + str(epoch) + ".png")
+                    plt.close()
 
                 if epoch != 0 and epoch % save_every_n_epoch == 0:
                     # save
-                    saver.save(sess, '/home/ubuntu/chg_workspace/3dcnn/model/model_cnn_rnn_timestep5/'+'simulation_cnn_rnn'+str(epoch)+'.ckpt')
+                    saver.save(sess, model_save_path + "simulation_cnn_rnn" + str(epoch) + ".ckpt")
 
+
+if __name__ == '__main__':
+
+    '''Multiple thread'''
+    pool = Pool(processes=5)
+
+    data_read_flags = multiprocessing.Manager().list([0, 0, 0, 0])
+    data_house = multiprocessing.Manager().list([0, 0, 0, 0])
+
+    # Training thread
+    files_num = len(file_path_clouds)
+    pool.apply_async(tf_training, args=(data_read_flags, data_house, files_num))
+
+    # Data Reading Thread
+    for i_epoch in range(epoch_num):
+        random_seq = generate_shuffled_array(0, files_num, shuffle=True)
+
+        for i_pool in range(files_num):
+            # pool.apply_async(test)
+            filename_pcl_this = file_path_clouds[random_seq[i_pool]]
+            filename_states_this = file_path_states[random_seq[i_pool]]
+            filename_labels_this = file_path_labels[random_seq[i_pool]]
+            pool.apply_async(read_threading, args=(filename_pcl_this, filename_states_this, filename_labels_this,
+                                                   data_read_flags, data_house))
+    print "Created " + str(epoch_num * files_num + 1) + " threads"
+
+    pool.close()
+    pool.join()
 
