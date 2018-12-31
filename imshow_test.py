@@ -73,6 +73,23 @@ def read_pcl(data, filename):
     return data
 
 
+def draw_plots(x, y):
+    """
+    Draw multiple plots
+    :param x: should be 2d array
+    :param y: should be 2d array
+    :return:
+    """
+    plt.plot(x, y)
+
+    plt.title("matplotlib")
+    plt.xlabel("x")
+    plt.ylabel("y")
+
+    plt.grid(True)
+    plt.show()
+
+
 if __name__ == "__main__":
 
     # data_mat = np.ones([5, 64, 64, 64, 1]) / 2
@@ -84,7 +101,7 @@ if __name__ == "__main__":
     # print data_mat[2,:,:,:,0]
 
     # file_name = "/home/ubuntu/chg_workspace/data/new_csvs/backward_unable/chg_route1_trial1/pcl_data_2018_12_12_14:03:47.csv"
-    file_name = "/home/ubuntu/chg_workspace/data/new_csvs/new_map/encoder/pcl_data_2018_12_15_10:06:01.csv"
+    file_name = "/home/ubuntu/chg_workspace/data/yaw_in_map/encoder/pcl_data_2018_12_26_16:00:56.csv"
     clouds = open(file_name, "r")
     img_num = len(clouds.readlines())
     clouds.close()
@@ -93,7 +110,9 @@ if __name__ == "__main__":
 
     print "data_mat", data_mat
 
-    path = '/home/ubuntu/chg_workspace/data/plots/input_pcl_test/'
+    path = '/home/ubuntu/chg_workspace/data/plots/test/'
     for i in range(180):
         name = path + str(i) + '.png'
         compare_save_3d_to_2d(data_mat[i, :, :, :, 0], data_mat[i, :, :, :, 0], 0, 1, 4, 12, 1, name)
+
+    draw_plots(np.arange(0, 576), np.arange(0, 576))
