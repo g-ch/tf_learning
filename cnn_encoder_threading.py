@@ -16,18 +16,82 @@ input_dimension_z = 24
 
 batch_size = 20
 learning_rate = 1e-4
-total_epoches = 500
+total_epoches = 1000
 save_every_n_epoch = 100
+times_per_file = 1
+
+model_save_path = "/home/ubuntu/chg_workspace/3dcnn_yaw_in_map/model/encoder/02/model/"
+image_save_path = "/home/ubuntu/chg_workspace/3dcnn_yaw_in_map/model/encoder/02/plots/"
+
+# path = "/home/ubuntu/chg_workspace/data/yaw_in_map/encoder"
+# clouds_filename = ["pcl_data_2018_12_26_16:12:17.csv",
+#                    "pcl_data_2018_12_26_16:07:27.csv",
+#                    "pcl_data_2018_12_26_16:05:34.csv",
+#                    "pcl_data_2018_12_26_16:00:56.csv"
+#                    ]
+#
+# file_path_list_pcl = [os.path.join(path, cloud) for cloud in clouds_filename]
 
 
-path = "/home/ubuntu/chg_workspace/data/new_csvs"
-clouds_filename = ["backward_unable/chg_route1_trial1/pcl_data_2018_12_12_14:03:47.csv",
-                   "backward_unable/chg_route1_trial3_swinging/pcl_data_2018_12_12_14:26:38.csv",
-                   "backward_unable/hzy_route1_trial1/pcl_data_2018_12_12_14:29:40.csv",
-                   "backward_unable/hzy_route1_trial2/pcl_data_2018_12_12_14:40:02.csv"
-                   ]
 
-file_path_list_pcl = [os.path.join(path, cloud) for cloud in clouds_filename]
+
+file_path_list_pcl = ["/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_17:14:40.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_17:13:39.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_17:13:08.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_17:12:28.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_17:10:57.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_17:09:32.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_17:07:09.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:56:50.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:54:52.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:54:20.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:53:31.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:52:19.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:51:43.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:51:06.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:49:10.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:48:43.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:47:56.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:47:20.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:45:41.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:45:08.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:44:35.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:43:49.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:43:17.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:42:28.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:41:34.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:40:51.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:39:49.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg02/pcl_data_2018_12_28_11:18:52.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg02/pcl_data_2018_12_28_11:19:34.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg02/pcl_data_2018_12_28_11:17:53.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg02/pcl_data_2018_12_28_11:17:04.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg02/pcl_data_2018_12_28_11:16:29.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg02/pcl_data_2018_12_28_11:15:51.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg02/pcl_data_2018_12_28_11:15:07.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg02/pcl_data_2018_12_28_11:10:35.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg02/pcl_data_2018_12_28_11:09:02.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg02/pcl_data_2018_12_28_11:07:03.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg02/pcl_data_2018_12_28_11:05:09.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg02/pcl_data_2018_12_28_11:03:37.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy01/pcl_data_2018_12_26_16:27:40.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy01/pcl_data_2018_12_26_16:25:51.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy01/pcl_data_2018_12_26_16:24:05.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy01/pcl_data_2018_12_26_16:21:51.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy02/pcl_data_2018_12_28_10:57:13.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy02/pcl_data_2018_12_28_10:55:10.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy02/pcl_data_2018_12_28_10:53:33.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy02/pcl_data_2018_12_28_10:51:46.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy02/pcl_data_2018_12_28_10:50:24.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy02/pcl_data_2018_12_28_10:48:41.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy02/pcl_data_2018_12_28_10:47:41.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy02/pcl_data_2018_12_28_10:45:32.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy02/pcl_data_2018_12_28_10:43:29.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy02/pcl_data_2018_12_28_10:40:36.csv",
+                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy02/pcl_data_2018_12_28_10:38:03.csv"
+                      ]
+
+
 
 img_wid = input_dimension_xy
 img_height = input_dimension_z
@@ -145,9 +209,12 @@ def decoder(x, batch_size):
             deconv2 = deconv3d(conv2, [special_sxy1, special_sxy1, special_sz1, d1, d1], output_shape=size_1, strides=[1, special_sxy1, special_sxy1, special_sz1, 1])
             print "deconv2", deconv2.get_shape()
         with tf.variable_scope("conv3"):
-            conv3 = conv3d_relu(deconv2, [k1, k1, k1, d1, 1], [1], [1, 1, 1, 1, 1])
+            conv3 = conv3d_relu(deconv2, [1, 1, 1, d1, d1], [1], [1, 1, 1, 1, 1])
             print "conv3", conv3.get_shape()
-            return conv3
+
+        with tf.variable_scope("conv4"):
+            conv4 = conv3d_relu(conv3, [k1, k1, k1, d1, 1], [1], [1, 1, 1, 1, 1])
+            return conv4
 
 
 def generate_shuffled_array(start, stop, shuffle=True):
@@ -204,9 +271,9 @@ def get_bacth(seq, data):
 
 
 # draw by axis z direction
-def compare_draw_3d_to_2d(data1, data2, min_val, max_val, rows, cols, step):
+def compare_img_save_3d_to_2d(data1, data2, min_val, max_val, rows, cols, step, name):
     """
-    To compare two 3 dimension array by image slices
+    To compare two 3 dimension array by image slices and save the image
     :param data1: data to compare, 3 dimension array
     :param data2: should have the same size as data1
     :param min_val: minimum value in data1 and data2
@@ -214,6 +281,7 @@ def compare_draw_3d_to_2d(data1, data2, min_val, max_val, rows, cols, step):
     :param rows: row number of the figure
     :param cols: col number of the figure
     :param step: step in z axis to show
+    :param name: path + name of the image to save
     :return:
     """
     colors = ['purple', 'yellow']
@@ -236,7 +304,10 @@ def compare_draw_3d_to_2d(data1, data2, min_val, max_val, rows, cols, step):
             a[2 * j][i].imshow(data1_copy[:, :, (j * cols + i) * step])
             a[2 * j + 1][i].imshow(data2_copy[:, :, (j * cols + i) * step])
 
-    plt.show(cmap=cmap, norm=norm)
+    #plt.show(cmap=cmap, norm=norm)
+    plt.savefig(name)
+    plt.cla
+    plt.close()
 
 
 def read_pcl_threading(filename_pcl, flags, house):
@@ -324,17 +395,18 @@ def tf_training(data_read_flags, data_house, file_num):
                 print "done looking for data.."
 
                 # get a random sequence for this file
-                sequence = generate_shuffled_array(0, data_mat.shape[0], shuffle=True)
-                batch_num = int(data_mat.shape[0] / batch_size)
-                # start batches
-                for batch_seq in range(batch_num):
-                    print "batch:" + str(batch_seq)
-                    # get data for this batch
-                    start_position = batch_seq * batch_size
-                    end_position = (batch_seq + 1) * batch_size
-                    batch_data = get_bacth(sequence[start_position:end_position], data_mat)
+                for times in range(times_per_file):
+                    sequence = generate_shuffled_array(0, data_mat.shape[0], shuffle=True)
+                    batch_num = int(data_mat.shape[0] / batch_size)
+                    # start batches
+                    for batch_seq in range(batch_num):
+                        # print "batch:" + str(batch_seq)
+                        # get data for this batch
+                        start_position = batch_seq * batch_size
+                        end_position = (batch_seq + 1) * batch_size
+                        batch_data = get_bacth(sequence[start_position:end_position], data_mat)
 
-                    sess.run(train_step, feed_dict={x_: batch_data})  # training
+                        sess.run(train_step, feed_dict={x_: batch_data})  # training
 
             print "epoch: " + str(epoch)
             print('loss=%s' % sess.run(loss, feed_dict={x_: batch_data}))
@@ -342,18 +414,19 @@ def tf_training(data_read_flags, data_house, file_num):
             if epoch % 10 == 0:
                 decode_pcl = sess.run(decode_result, feed_dict={x_: batch_data})
                 print "batch_data", batch_data[0, :, :, :, 0]
-                compare_draw_3d_to_2d(batch_data[0, :, :, :, 0], decode_pcl[0, :, :, :, 0], 0, 1, 4, 12, 1)
+                save_name = image_save_path + "epoch_" + str(epoch) + ".png"
+                compare_img_save_3d_to_2d(batch_data[0, :, :, :, 0], decode_pcl[0, :, :, :, 0], 0, 1, 4, 12, 1, save_name)
 
-            if (epoch + 1) % save_every_n_epoch == 0:
+            if epoch % save_every_n_epoch == 0:
                 saver.save(sess,
-                           '/home/ubuntu/chg_workspace/3dcnn/model/auto_encoder/' + 'simulation_autoencoder_' + str(epoch) + '.ckpt')
+                           model_save_path + "simulation_autoencoder_" + str(epoch) + ".ckpt")
 
 
 if __name__ == '__main__':
 
     '''Data reading'''
     print "Reading data..."
-    pool = Pool(processes=5)
+    pool = Pool(processes=8)
 
     data_read_flags = multiprocessing.Manager().list([0, 0, 0, 0])
     data_house = multiprocessing.Manager().list([0, 0, 0, 0])
