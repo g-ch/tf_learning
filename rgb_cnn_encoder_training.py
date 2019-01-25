@@ -26,12 +26,17 @@ model_save_path = "/home/ubuntu/chg_workspace/rgb/model/encoder/01/model/"
 image_save_path = "/home/ubuntu/chg_workspace/rgb/model/encoder/01/plots/"
 
 file_path_list_images = [
+"/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy/long_good_gazebo_070/01/rgb_data_2019_01_16_23:14:35.csv",
+"/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy/long_good_gazebo_070/02/rgb_data_2019_01_16_23:08:35.csv",
+"/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy/long_good_gazebo_070/03/rgb_data_2019_01_16_23:12:24.csv",
+"/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy/long_good_gazebo_070/04/rgb_data_2019_01_16_23:10:25.csv",
 "/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy/long_good/01/rgb_data_2019_01_15_20:53:58.csv",
 "/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy/long_good/02/rgb_data_2019_01_15_20:32:54.csv",
 "/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy/long_good/03/rgb_data_2019_01_15_20:44:07.csv",
 "/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy/long_good/04/rgb_data_2019_01_15_20:38:53.csv",
 "/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy/long_good/05/rgb_data_2019_01_15_20:36:00.csv",
 "/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy/long_good/06/rgb_data_2019_01_15_20:48:23.csv"
+
 ]
 
 img_wid = input_dimension_x

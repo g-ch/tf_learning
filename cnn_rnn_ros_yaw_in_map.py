@@ -9,11 +9,11 @@ from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-import sys
+import time
 
 commands_compose_each = 1  # Should be "input3_dim": 8  / 4
 
-model_path = "/home/ubuntu/chg_workspace/3dcnn_yaw_in_map/model/cnn_rnn/02/third_train/simulation_cnn_rnn150.ckpt"
+model_path = "/home/ubuntu/chg_workspace/3dcnn_yaw_in_map/model/cnn_rnn/04_standard_data/model_02/simulation_cnn_rnn100.ckpt"
 
 ''' Parameters for input vectors'''
 input_paras = {
@@ -164,7 +164,11 @@ def refillPclArr(arr, point_x, point_y, point_z, intensity, odom_x, odom_y, odom
     yaw = yaw_current * 3.15
     x_origin = point_x - odom_x
     y_origin = point_y - odom_y
+
+    time_now = time.time()
     x_rotated, y_rotated = rotate(x_origin, y_origin, yaw)
+    time_elapsed = time.time() - time_now
+    # print("Time used for rotation:  " + str(time_elapsed))
 
     x_tmp = int(x_rotated / resolu + 0.5)
     y_tmp = int(y_rotated / resolu + 0.5)
@@ -361,6 +365,7 @@ if __name__ == '__main__':
         state_data_give = np.zeros([1, rnn_paras["state_len"]])
 
         print "parameters restored!"
+        global new_msg_received
 
         while not rospy.is_shutdown():
             if new_msg_received:
@@ -373,7 +378,7 @@ if __name__ == '__main__':
                 results = sess.run(result, feed_dict={cube_data: pcl_arr,
                                                       line_data_2: data3_to_feed, state_data: state_data_give})
 
-                # state_data_give = sess.run(state_returned,
+                # state_data_give = 0.2 * sess.run(state_returned,
                 #                            feed_dict={cube_data: pcl_arr,
                 #                                       line_data_2: data3_to_feed, state_data: state_data_give})
 
@@ -382,22 +387,18 @@ if __name__ == '__main__':
                    #                                   line_data_2: data3_to_feed, state_data: state_data_give})
                 # draw_plots(np.arange(0, 576), np.reshape(concat_vector, [576]))
 
-                move_cmd.linear.x = results[0, 0] * 0.7
+                move_cmd.linear.x = results[0, 0] * 0.7 #1.0
                 # # move_cmd.linear.x = 0.0
-                move_cmd.angular.z = results[0, 1] * 0.88
+                move_cmd.angular.z = results[0, 1] * 0.88 #0.88
 
                 # if move_cmd.linear.x < 0:
                 #     move_cmd.linear.x = 0
 
                 cmd_pub.publish(move_cmd)
 
-                print yaw_forward, yaw_backward, yaw_leftward, yaw_rightward
+                # print yaw_forward, yaw_backward, yaw_leftward, yaw_rightward
                 print results
 
                 new_msg_received = False
             rate.sleep()
-
-
-
-
 

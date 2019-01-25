@@ -24,8 +24,8 @@ if_train_encoder = True
 if_continue_train = False
 if_regularization = True
 
-model_save_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/01/model/"
-image_save_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/01/plot/"
+model_save_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/02_standard_data/model/"
+image_save_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/02_standard_data/plot/"
 
 encoder_model = "/home/ubuntu/chg_workspace/rgb/model/encoder/01/model/simulation_autoencoder_900.ckpt"
 last_model = ""
@@ -54,7 +54,7 @@ states_num_one_line = 17
 labels_num_one_line = 4
 
 # training_file_path = "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train"
-training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy/long_good/01"
+training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy"
 
 ''' Parameters for Computer'''
 gpu_num = 2
@@ -252,11 +252,14 @@ def read_threading(filename_img, filename_state, filename_label, data_read_flags
 
     ''' Read state data '''
     data_states = np.zeros([img_num, states_num_one_line])
+    # print "state name", filename_state
     read_others(data_states, filename_state, states_num_one_line)
+    # print "state data get!"
 
     ''' Read label data '''
     data_labels = np.zeros([img_num, labels_num_one_line])
     read_others(data_labels, filename_label, labels_num_one_line)
+    # print "label data get!"
 
     ''' Get useful states and labels '''
     commands_input_forward = np.concatenate([np.reshape(data_states[:, 13], [img_num, 1])
@@ -589,7 +592,7 @@ if __name__ == '__main__':
     print "Found " + str(len(file_path_clouds)) + " files to train!!!"
 
     '''Multiple thread'''
-    pool = Pool(processes=2)
+    pool = Pool(processes=5)
 
     data_read_flags = multiprocessing.Manager().list([0, 0, 0, 0])
     data_house = multiprocessing.Manager().list([0, 0, 0, 0])

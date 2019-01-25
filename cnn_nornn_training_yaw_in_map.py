@@ -24,8 +24,8 @@ if_train_encoder = True
 if_continue_train = False
 if_regularization = True
 
-model_save_path = "/home/ubuntu/chg_workspace/3dcnn_yaw_in_map/model/only_cnn/01/"
-image_save_path = "/home/ubuntu/chg_workspace/3dcnn/model/cnn_rnn/01/plot3/"
+model_save_path = "/home/ubuntu/chg_workspace/3dcnn_yaw_in_map/model/only_cnn/02_standard_data/model/"
+image_save_path = "/home/ubuntu/chg_workspace/3dcnn_yaw_in_map/model/only_cnn/02_standard_data/plot/"
 
 encoder_model = "/home/ubuntu/chg_workspace/3dcnn_yaw_in_map/model/encoder/02/model/simulation_autoencoder_700.ckpt"
 last_model = "/home/ubuntu/chg_workspace/3dcnn_yaw_in_map/model/cnn_rnn/02/second_train/simulation_cnn_rnn100.ckpt"
@@ -51,12 +51,12 @@ states_num_one_line = 17
 labels_num_one_line = 4
 
 # training_file_path = "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train"
-training_file_path = "/media/ubuntu/1136bf64-c3dc-4333-91ee-7d23c7f5177d/data/new_csvs/new_map_depth_img/hzy"
+training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy"
 
-''' Parameters for Computer'''
+''' Parameters for Computer '''
 gpu_num = 2
 
-''' Parameters for concat fully layers'''
+''' Parameters for concat fully layers '''
 fully_paras = {
     "raw_batch_size": 20,
     "input_len": 544,

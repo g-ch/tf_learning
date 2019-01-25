@@ -21,14 +21,14 @@ epoch_num = 500
 save_every_n_epoch = 20
 training_times_simple_epoch = 2
 if_train_encoder = True
-if_continue_train = False
+if_continue_train = True
 if_regularization = True
 
-model_save_path = "/home/ubuntu/chg_workspace/test_if_disaster/only_long/"
-image_save_path = "/home/ubuntu/chg_workspace/3dcnn/model/cnn_rnn/01/plot3/"
+model_save_path = "/home/ubuntu/chg_workspace/3dcnn_yaw_in_map/model/cnn_rnn/04_standard_data/model_02/"
+image_save_path = "/home/ubuntu/chg_workspace/3dcnn_yaw_in_map/model/cnn_rnn/04_standard_data/plot/"
 
 encoder_model = "/home/ubuntu/chg_workspace/3dcnn_yaw_in_map/model/encoder/02/model/simulation_autoencoder_700.ckpt"
-last_model = "/home/ubuntu/chg_workspace/3dcnn_yaw_in_map/model/cnn_rnn/02/second_train/simulation_cnn_rnn100.ckpt"
+last_model = "/home/ubuntu/chg_workspace/3dcnn_yaw_in_map/model/cnn_rnn/04_standard_data/model/simulation_cnn_rnn100.ckpt"
 
 ''' Parameters for input vectors'''
 input_paras = {
@@ -50,7 +50,7 @@ img_height = input_dimension_z
 states_num_one_line = 17
 labels_num_one_line = 4
 
-training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy/long_good"
+training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy"
 
 
 ''' Parameters for Computer'''
