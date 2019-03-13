@@ -16,7 +16,7 @@ import multiprocessing
 ''' Parameters for training '''
 ''' Batch size defined in Parameters for RNN '''
 learning_rate = 1e-4
-regularization_para = 1e-7  # might have problem in rgb training, too many parameters
+regularization_para = 1e-7
 epoch_num = 500
 save_every_n_epoch = 50
 training_times_simple_epoch = 2
@@ -24,8 +24,8 @@ if_train_encoder = True
 if_continue_train = False
 if_regularization = True
 
-model_save_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/02_standard_data/model/"
-image_save_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/02_standard_data/plot/"
+model_save_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/03_direction_high/model/"
+image_save_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/03_direction_high/plot/"
 
 encoder_model = "/home/ubuntu/chg_workspace/rgb/model/encoder/01/model/simulation_autoencoder_900.ckpt"
 last_model = ""
@@ -62,16 +62,17 @@ gpu_num = 2
 ''' Parameters for concat fully layers'''
 fully_paras = {
     "raw_batch_size": 20,
-    "input_len": 544,
+    "input_len": 640,
     "layer1_len": 256,
     "layer2_len": 64,
+    "layer3_len": 64,
     "output_len": 2
 }
 
 ''' Parameters for concat values'''
 concat_paras = {
     "dim1": 512,  # should be the same as encoder out dim
-    "dim2": 32  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
+    "dim2": 128  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
 }
 
 ''' Parameters for CNN encoder'''
@@ -386,7 +387,7 @@ def tf_training(data_read_flags, data_house, file_num):
         global_step = tf.train.get_or_create_global_step()
         tower_grads = []
         rgb_data = tf.placeholder("float", name="rgb_data", shape=[None, input_dimension_y, input_dimension_x,
-                                                                    input_channel])
+                                                                   input_channel])
         line_data_2 = tf.placeholder("float", name="line_data", shape=[None, input_paras["input2_dim"]])  # commands
         reference = tf.placeholder("float", name="reference", shape=[None, fully_paras["output_len"]])
 
@@ -444,7 +445,11 @@ def tf_training(data_read_flags, data_house, file_num):
                                                      fully_paras["layer2_len"])
 
                     with tf.variable_scope("relu_all_4"):
-                        result_this_gpu = relu_layer(relu_data_all_3, fully_paras["layer2_len"],
+                        relu_data_all_4 = relu_layer(relu_data_all_3, fully_paras["layer2_len"],
+                                                     fully_paras["layer3_len"])
+
+                    with tf.variable_scope("relu_all_5"):
+                        result_this_gpu = relu_layer(relu_data_all_4, fully_paras["layer2_len"],
                                                      fully_paras["output_len"])
 
                     print "graph built!"

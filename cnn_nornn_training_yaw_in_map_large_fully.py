@@ -16,7 +16,7 @@ import multiprocessing
 ''' Parameters for training '''
 ''' Batch size defined in Parameters for RNN '''
 learning_rate = 1e-4
-regularization_para = 1e-7  # might have problem in rgb training, too many parameters
+regularization_para = 1e-8
 epoch_num = 500
 save_every_n_epoch = 50
 training_times_simple_epoch = 2
@@ -24,29 +24,26 @@ if_train_encoder = True
 if_continue_train = False
 if_regularization = True
 
-model_save_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/02_standard_data/model/"
-image_save_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/02_standard_data/plot/"
+model_save_path = "/home/ubuntu/chg_workspace/3dcnn_yaw_in_map/model/only_cnn/03_large_fully/model/"
+image_save_path = "/home/ubuntu/chg_workspace/3dcnn_yaw_in_map/model/only_cnn/03_large_fully/plot/"
 
-encoder_model = "/home/ubuntu/chg_workspace/rgb/model/encoder/01/model/simulation_autoencoder_900.ckpt"
-last_model = ""
+encoder_model = "/home/ubuntu/chg_workspace/3dcnn_yaw_in_map/model/encoder/02/model/simulation_autoencoder_700.ckpt"
+last_model = "/home/ubuntu/chg_workspace/3dcnn_yaw_in_map/model/cnn_rnn/02/second_train/simulation_cnn_rnn100.ckpt"
 
 ''' Parameters for input vectors'''
 input_paras = {
-    "input1_dim_x": 256,
-    "input1_dim_y": 192,
-    "input1_dim_channel": 3,
+    "input1_dim_xy": 64,  # point cloud
+    "input1_dim_z": 24,  # point cloud
     "input2_dim": 4  # commands
 }
 
 commands_compose_each = 1  # Should be "input3_dim": 4  / 4
 
-input_dimension_x = input_paras["input1_dim_x"]
-input_dimension_y = input_paras["input1_dim_y"]
-input_channel = input_paras["input1_dim_channel"]
+input_dimension_xy = input_paras["input1_dim_xy"]
+input_dimension_z = input_paras["input1_dim_z"]
 
-img_wid = input_dimension_x
-img_height = input_dimension_y
-img_channel = input_channel
+img_wid = input_dimension_xy
+img_height = input_dimension_z
 
 ''' Parameters for csv files '''
 
@@ -56,52 +53,55 @@ labels_num_one_line = 4
 # training_file_path = "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train"
 training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy"
 
-''' Parameters for Computer'''
+''' Parameters for Computer '''
 gpu_num = 2
 
-''' Parameters for concat fully layers'''
+''' Parameters for concat fully layers '''
 fully_paras = {
     "raw_batch_size": 20,
-    "input_len": 544,
-    "layer1_len": 256,
-    "layer2_len": 64,
+    "input_len": 1072,
+    "layer1_len": 512,
+    "layer2_len": 128,
     "output_len": 2
 }
 
 ''' Parameters for concat values'''
 concat_paras = {
-    "dim1": 512,  # should be the same as encoder out dim
-    "dim2": 32  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
+    "dim1": 1024,  # should be the same as encoder out dim
+    "dim2": 48  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
 }
 
 ''' Parameters for CNN encoder'''
 encoder_para = {
     "kernel1": 5,
-    "stride1": 2,
+    "stride_xy1": 2,
+    "stride_z1": 3,
     "channel1": 32,
     "pool1": 2,
     "kernel2": 3,
-    "stride2": 2,
+    "stride_xy2": 2,
+    "stride_z2": 2,
     "channel2": 64,
     "kernel3": 3,
-    "stride3": 2,
+    "stride_xy3": 2,
+    "stride_z3": 2,
     "channel3": 128,
-    "kernel4": 3,
-    "stride4": 2,
-    "channel4": 256,
-    "out_dia": 12288
+    "out_dia": 2048
 }
 
 
-def conv2d_relu(x, kernel_shape, bias_shape, strides):
-    weights = tf.get_variable("weights_con", kernel_shape, initializer=tf.truncated_normal_initializer(stddev=0.1))
-    biases = tf.get_variable("bias_con", bias_shape, initializer=tf.constant_initializer(0.0))
-    conv = tf.nn.conv2d(x, weights, strides=strides, padding="SAME")
+def conv3d_relu(x, kernel_shape, bias_shape, strides):
+    """ 3D convolution For 3D CNN encoder """
+    ''' Parameters won't change in this training file '''
+    weights = tf.get_variable("weights_con", kernel_shape, trainable=if_train_encoder)
+    biases = tf.get_variable("bias_con", bias_shape, trainable=if_train_encoder)
+    conv = tf.nn.conv3d(x, weights, strides=strides, padding="SAME")
     return tf.nn.relu(conv + biases)
 
 
 def max_pool(x, kernel_shape, strides):
-    return tf.nn.max_pool(x, ksize=kernel_shape, strides=strides, padding='SAME')
+    """ 3D convolution For 3D CNN encoder """
+    return tf.nn.max_pool3d(x, ksize=kernel_shape, strides=strides, padding='SAME')
 
 
 def relu_layer(x, x_diamension, neurals_num):
@@ -117,51 +117,35 @@ def relu_layer(x, x_diamension, neurals_num):
 
 
 def encoder(x):
-    print "building encoder.."
     k1 = encoder_para["kernel1"]
-    s1 = encoder_para["stride1"]
+    sxy1 = encoder_para["stride_xy1"]
+    sz1 = encoder_para["stride_z1"]
     d1 = encoder_para["channel1"]
     p1 = encoder_para["pool1"]
 
     k2 = encoder_para["kernel2"]
-    s2 = encoder_para["stride2"]
+    sxy2 = encoder_para["stride_xy2"]
+    sz2 = encoder_para["stride_z2"]
     d2 = encoder_para["channel2"]
 
     k3 = encoder_para["kernel3"]
-    s3 = encoder_para["stride3"]
+    sxy3 = encoder_para["stride_xy3"]
+    sz3 = encoder_para["stride_z3"]
     d3 = encoder_para["channel3"]
 
-    k4 = encoder_para["kernel4"]
-    s4 = encoder_para["stride4"]
-    d4 = encoder_para["channel4"]
-
-    print "building encoder"
     with tf.variable_scope("encoder"):
         with tf.variable_scope("conv1"):
-            conv1 = conv2d_relu(x, [k1, k1, input_channel, d1], [d1], [1, s1, s1, 1])
-            print "conv1 ", conv1
-        with tf.variable_scope("conv1_1"):
-            conv1_1 = conv2d_relu(conv1, [k1, k1, d1, d1], [d1], [1, 1, 1, 1])
+            conv1 = conv3d_relu(x, [k1, k1, k1, 1, d1], [d1], [1, sxy1, sxy1, sz1, 1])
 
         with tf.variable_scope("pool1"):
-            max_pool1 = max_pool(conv1_1, [1, p1, p1, 1], [1, p1, p1, 1])
+            max_pool1 = max_pool(conv1, [1, p1, p1, p1, 1], [1, p1, p1, p1, 1])
 
         with tf.variable_scope("conv2"):
-            conv2 = conv2d_relu(max_pool1, [k2, k2, d1, d2], [d2], [1, s2, s2, 1])
-        with tf.variable_scope("conv2_1"):
-            conv2_1 = conv2d_relu(conv2, [k2, k2, d2, d2], [d2], [1, 1, 1, 1])
+            conv2 = conv3d_relu(max_pool1, [k2, k2, k2, d1, d2], [d2], [1, sxy2, sxy2, sz2, 1])
 
         with tf.variable_scope("conv3"):
-            conv3 = conv2d_relu(conv2_1, [k3, k3, d2, d3], [d3], [1, s3, s3, 1])
-        with tf.variable_scope("conv3_1"):
-            conv3_1 = conv2d_relu(conv3, [k3, k3, d3, d3], [d3], [1, 1, 1, 1])
-
-        with tf.variable_scope("conv4"):
-            conv4 = conv2d_relu(conv3_1, [k4, k4, d3, d4], [d4], [1, s4, s4, 1])
-        with tf.variable_scope("conv4_1"):
-            conv4_1 = conv2d_relu(conv4, [k4, k4, d4, d4], [d4], [1, 1, 1, 1])
-
-            return conv4_1
+            conv3 = conv3d_relu(conv2, [k3, k3, k3, d2, d3], [d3], [1, sxy3, sxy3, sz3, 1])
+            return conv3
 
 
 def average_gradients(tower_grads):
@@ -177,6 +161,42 @@ def average_gradients(tower_grads):
         grad_and_var = (grad, v)
         average_grads.append(grad_and_var)
     return average_grads
+
+
+# draw by axis z direction
+def compare_draw_3d_to_2d(data1, data2, min_val, max_val, rows, cols, step):
+    """
+    To compare two 3 dimension array by image slices
+    :param data1: data to compare, 3 dimension array
+    :param data2: should have the same size as data1
+    :param min_val: minimum value in data1 and data2
+    :param max_val: maximum value in data1 and data2
+    :param rows: row number of the figure
+    :param cols: col number of the figure
+    :param step: step in z axis to show
+    :return:
+    """
+    colors = ['purple', 'yellow']
+    bounds = [min_val, max_val]
+    cmap = mpl.colors.ListedColormap(colors)
+    norm = mpl.colors.BoundaryNorm(bounds, cmap.N)
+
+    f, a = plt.subplots(rows, cols, figsize=(cols, rows))
+
+    # for scale
+    data1_copy = np.array(tuple(data1))
+    data2_copy = np.array(tuple(data2))
+    data1_copy[0, 0, :] = min_val
+    data2_copy[0, 0, :] = min_val
+    data1_copy[0, 1, :] = max_val
+    data2_copy[0, 1, :] = max_val
+
+    for i in range(cols):
+        for j in range(rows / 2):
+            a[2 * j][i].imshow(data1_copy[:, :, (j * cols + i) * step])
+            a[2 * j + 1][i].imshow(data2_copy[:, :, (j * cols + i) * step])
+
+    plt.show(cmap=cmap, norm=norm)
 
 
 def draw_plots(x, y):
@@ -228,7 +248,7 @@ def get_batch(seq, data):
     return result
 
 
-def read_threading(filename_img, filename_state, filename_label, data_read_flags, house):
+def read_threading(filename_pcl, filename_state, filename_label, data_read_flags, house):
     """
     Read data thread function.
     :param filename_pcl:  pcl filename
@@ -240,26 +260,23 @@ def read_threading(filename_img, filename_state, filename_label, data_read_flags
     """
     print "Start reading..."
     ''' Read pcl data first '''
-    clouds = open(filename_img, "r")
+    clouds = open(filename_pcl, "r")
     img_num = len(clouds.readlines())
     clouds.close()
-    data_img = np.zeros([img_num, img_height, img_wid, img_channel])
-    read_img_threading(data_img, filename_img)
-    print "rgb data get! img_num = " + str(img_num)
+    data_pcl = np.zeros([img_num, img_wid, img_wid, img_height, 1])
+    read_pcl(data_pcl, filename_pcl)
+    print "pcl data get! img_num = " + str(img_num)
 
     # Just to make sure the data is read correctly
     # compare_draw_3d_to_2d(data_pcl[10, :, :, :, 0], data_pcl[10, :, :, :, 0], 0, 1, 2, 12, 1)
 
     ''' Read state data '''
     data_states = np.zeros([img_num, states_num_one_line])
-    # print "state name", filename_state
     read_others(data_states, filename_state, states_num_one_line)
-    # print "state data get!"
 
     ''' Read label data '''
     data_labels = np.zeros([img_num, labels_num_one_line])
     read_others(data_labels, filename_label, labels_num_one_line)
-    # print "label data get!"
 
     ''' Get useful states and labels '''
     commands_input_forward = np.concatenate([np.reshape(data_states[:, 13], [img_num, 1])
@@ -286,8 +303,8 @@ def read_threading(filename_img, filename_state, filename_label, data_read_flags
             if data_read_flags[i_flag] == 0:
                 data_read_flags[i_flag] = 1
                 print "found available space, copy data... "
-                house[i_flag] = [data_img, commands_input, labels_ref]
-                del data_img
+                house[i_flag] = [data_pcl, commands_input, labels_ref]
+                del data_pcl
                 del commands_input
                 del labels_ref
                 # label_to_draw = np.reshape(labels_ref[:, 0], [img_num])
@@ -295,33 +312,6 @@ def read_threading(filename_img, filename_state, filename_label, data_read_flags
                 data_read_flags[i_flag] = 2
                 looking_for_free_space_flag = False
                 break
-
-
-def read_img_threading(data_img, filename_img):
-    maxInt = sys.maxsize
-    decrement = True
-
-    while decrement:
-        # decrease the maxInt value by factor 10
-        # as long as the OverflowError occurs.
-        decrement = False
-        try:
-            # print "begin read img data..", "filename_img=", filename_img
-            csv.field_size_limit(maxInt)
-
-            with open(filename_img, mode='r') as csvfile:
-                csv_reader = csv.reader(csvfile, delimiter=',', quotechar='|')
-                i_row = 0
-                for row in csv_reader:
-                    for i in range(img_height):
-                        for j in range(img_wid):
-                            for k in range(3):
-                                data_img[i_row, i, j, k] = row[i * img_wid * 3 + j * 3 + k]
-                    i_row = i_row + 1
-                # list_result.append(data)
-        except OverflowError:
-            maxInt = int(maxInt / 10)
-            decrement = True
 
 
 def read_pcl(data, filename):
@@ -385,8 +375,8 @@ def tf_training(data_read_flags, data_house, file_num):
     with tf.device("/cpu:0"):
         global_step = tf.train.get_or_create_global_step()
         tower_grads = []
-        rgb_data = tf.placeholder("float", name="rgb_data", shape=[None, input_dimension_y, input_dimension_x,
-                                                                    input_channel])
+        cube_data = tf.placeholder("float", name="cube_data", shape=[None, input_dimension_xy, input_dimension_xy,
+                                                                     input_dimension_z, 1])
         line_data_2 = tf.placeholder("float", name="line_data", shape=[None, input_paras["input2_dim"]])  # commands
         reference = tf.placeholder("float", name="reference", shape=[None, fully_paras["output_len"]])
 
@@ -396,14 +386,14 @@ def tf_training(data_read_flags, data_house, file_num):
             for gpu_seq in range(gpu_num):
                 with tf.device("/gpu:%d" % gpu_seq):
                     # Set data for each gpu
-                    rgb_data_this_gpu = rgb_data[gpu_seq * batch_size_one_gpu:
-                                                   (gpu_seq + 1) * batch_size_one_gpu, :, :, :]
+                    cube_data_this_gpu = cube_data[gpu_seq * batch_size_one_gpu:
+                                                   (gpu_seq + 1) * batch_size_one_gpu, :, :, :, :]
                     line_data_2_this_gpu = line_data_2[gpu_seq * batch_size_one_gpu:
                                                        (gpu_seq + 1) * batch_size_one_gpu, :]
                     reference_this_gpu = reference[gpu_seq * batch_size_one_gpu:(gpu_seq + 1) * batch_size_one_gpu, :]
 
                     # 3D CNN
-                    encode_vector = encoder(rgb_data_this_gpu)
+                    encode_vector = encoder(cube_data_this_gpu)
                     print "encoder built"
                     # To flat vector
                     encode_vector_flat = tf.reshape(encode_vector, [-1, encoder_para["out_dia"]])
@@ -552,7 +542,7 @@ def tf_training(data_read_flags, data_house, file_num):
                             # draw_plots(np.arange(0, batch_size), label_to_draw)
 
                             # train
-                            sess.run(train_op, feed_dict={rgb_data: data_pcl_batch,
+                            sess.run(train_op, feed_dict={cube_data: data_pcl_batch,
                                                           line_data_2: data_command_batch, reference: label_batch})
 
                             del data_pcl_batch
@@ -584,10 +574,10 @@ if __name__ == '__main__':
     file_type = '.csv'
     for file in files:
         if os.path.splitext(file)[1] == file_type:
-            if os.path.splitext(file)[0].split('/')[-1].split('_')[0] == 'rgb':
+            if os.path.splitext(file)[0].split('/')[-1].split('_')[0] == 'pcl':
                 file_path_clouds.append(file)
-                file_path_states.append(file.replace('rgb', 'uav'))
-                file_path_labels.append(file.replace('rgb', 'label'))
+                file_path_states.append(file.replace('pcl', 'uav'))
+                file_path_labels.append(file.replace('pcl', 'label'))
 
     print "Found " + str(len(file_path_clouds)) + " files to train!!!"
 
@@ -607,10 +597,10 @@ if __name__ == '__main__':
 
         for i_pool in range(files_num):
             # pool.apply_async(test)
-            filename_rgb_this = file_path_clouds[random_seq[i_pool]]
+            filename_pcl_this = file_path_clouds[random_seq[i_pool]]
             filename_states_this = file_path_states[random_seq[i_pool]]
             filename_labels_this = file_path_labels[random_seq[i_pool]]
-            pool.apply_async(read_threading, args=(filename_rgb_this, filename_states_this, filename_labels_this,
+            pool.apply_async(read_threading, args=(filename_pcl_this, filename_states_this, filename_labels_this,
                                                    data_read_flags, data_house))
     print "Created " + str(epoch_num * files_num + 1) + " threads"
 

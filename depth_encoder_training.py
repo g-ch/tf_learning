@@ -1,20 +1,13 @@
 import tensorflow as tf
 import numpy as np
-import math
-import matplotlib.pyplot as plt
-import matplotlib as mpl
 import sys
 import csv
 import gc
-from multiprocessing import Pool
-import multiprocessing
-import time
-import os
 import cv2
 
 input_dimension_x = 256
 input_dimension_y = 192
-input_channel = 3
+input_channel = 1
 
 batch_size = 20
 learning_rate = 1e-4
@@ -22,20 +15,16 @@ total_epoches = 1000
 save_every_n_epoch = 100
 times_per_file = 1
 
-model_save_path = "/home/ubuntu/chg_workspace/rgb/model/encoder/02/model/"
-image_save_path = "/home/ubuntu/chg_workspace/rgb/model/encoder/02/plots/"
+model_save_path = "/home/ubuntu/chg_workspace/depth/model/encoder/01/model/"
+image_save_path = "/home/ubuntu/chg_workspace/depth/model/encoder/01/plots/"
 
 file_path_list_images = [
-"/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy/long_good/01/rgb_data_2019_01_17_14:05:39.csv",
-"/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy/long_good/02/rgb_data_2019_01_17_13:54:36.csv",
-"/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy/long_good/03/rgb_data_2019_01_17_13:59:24.csv",
-"/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy/long_good/04/rgb_data_2019_01_17_13:57:19.csv",
-"/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy/long_good/05/rgb_data_2019_01_17_13:55:59.csv",
-"/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy/long_good/06/rgb_data_2019_01_17_14:01:54.csv",
-"/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy/long_good_gazebo_070/01/rgb_data_2019_01_16_23:14:35.csv",
-"/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy/long_good_gazebo_070/02/rgb_data_2019_01_16_23:08:35.csv",
-"/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy/long_good_gazebo_070/03/rgb_data_2019_01_16_23:12:24.csv",
-"/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy/long_good_gazebo_070/04/rgb_data_2019_01_16_23:10:25.csv"
+    "/home/ubuntu/chg_workspace/data/new_map_with_depth_img/depth_rgb_semantics/gazebo_rate_092/yhz/long_good/01/depth_data_2019_03_11_11:31:50.csv",
+    "/home/ubuntu/chg_workspace/data/new_map_with_depth_img/depth_rgb_semantics/gazebo_rate_092/yhz/long_good/02/depth_data_2019_03_11_10:29:56.csv",
+    "/home/ubuntu/chg_workspace/data/new_map_with_depth_img/depth_rgb_semantics/gazebo_rate_092/yhz/long_good/03/depth_data_2019_03_11_11:00:27.csv",
+    "/home/ubuntu/chg_workspace/data/new_map_with_depth_img/depth_rgb_semantics/gazebo_rate_092/yhz/long_good/04/depth_data_2019_03_11_10:46:19.csv",
+    "/home/ubuntu/chg_workspace/data/new_map_with_depth_img/depth_rgb_semantics/gazebo_rate_092/yhz/long_good/05/depth_data_2019_03_11_10:40:38.csv",
+    "/home/ubuntu/chg_workspace/data/new_map_with_depth_img/depth_rgb_semantics/gazebo_rate_092/yhz/long_good/06/depth_data_2019_03_11_11:12:33.csv"
 ]
 
 img_wid = input_dimension_x
@@ -241,14 +230,14 @@ def get_bacth(seq, data):
     return result
 
 
-def read_img_threading(filename_img, house, seq):
+def read_img_one_channel(filename_img, house, seq):
     maxInt = sys.maxsize
     decrement = True
 
     clouds = open(filename_img, "r")
     img_num = len(clouds.readlines())
     clouds.close()
-    data_img = np.zeros([img_num, img_height, img_wid, input_channel])
+    data_img = np.zeros([img_num, img_height, img_wid, 1])
 
     while decrement:
         # decrease the maxInt value by factor 10
@@ -264,8 +253,7 @@ def read_img_threading(filename_img, house, seq):
                 for row in csv_reader:
                     for i in range(img_height):
                         for j in range(img_wid):
-                            for k in range(3):
-                                data_img[i_row, i, j, k] = row[i * img_wid * 3 + j * 3 + k]
+                            data_img[i_row, i, j, 0] = row[i * img_wid + j]
                     i_row = i_row + 1
                 # list_result.append(data)
         except OverflowError:
@@ -304,8 +292,6 @@ def tf_training(data_house, file_num):
 
                 data_mat = data_house[file_seq]
 
-                print "done looking for data.."
-
                 # get a random sequence for this file
                 for times in range(times_per_file):
                     sequence = generate_shuffled_array(0, data_mat.shape[0], shuffle=True)
@@ -324,12 +310,6 @@ def tf_training(data_house, file_num):
             print('loss=%s' % sess.run(loss, feed_dict={x_: batch_data}))
 
             if epoch % 10 == 0:
-                # decode_img = sess.run(decode_result, feed_dict={x_: batch_data})
-                # save_name = image_save_path + "epoch_" + str(epoch) + ".png"
-                # img_to_save = decode_img[0, :, :, :]
-                # cv2.imwrite(save_name, img_to_save)
-                # opencv image save here
-
                 decode_img = sess.run(decode_result, feed_dict={x_: batch_data})
                 save_name = image_save_path + "epoch_" + str(epoch) + ".png"
                 save_name_ori = image_save_path + "epoch_" + str(epoch) + "_ori.png"
@@ -353,7 +333,7 @@ if __name__ == '__main__':
 
     for file_seq in range(file_num):
         print "reading file " + str(file_seq)
-        read_img_threading(file_path_list_images[file_seq], data_house, file_seq)
+        read_img_one_channel(file_path_list_images[file_seq], data_house, file_seq)
 
     tf_training(data_house, file_num)
 

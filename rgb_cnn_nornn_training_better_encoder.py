@@ -24,10 +24,10 @@ if_train_encoder = True
 if_continue_train = False
 if_regularization = True
 
-model_save_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/02_standard_data/model/"
-image_save_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/02_standard_data/plot/"
+model_save_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/04_better_encoder/model/"
+image_save_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/04_better_encoder/plot/"
 
-encoder_model = "/home/ubuntu/chg_workspace/rgb/model/encoder/01/model/simulation_autoencoder_900.ckpt"
+encoder_model = "/home/ubuntu/chg_workspace/rgb/model/encoder/large_output/trial2/model/simulation_autoencoder_900.ckpt"
 last_model = ""
 
 ''' Parameters for input vectors'''
@@ -62,7 +62,7 @@ gpu_num = 2
 ''' Parameters for concat fully layers'''
 fully_paras = {
     "raw_batch_size": 20,
-    "input_len": 544,
+    "input_len": 576,
     "layer1_len": 256,
     "layer2_len": 64,
     "output_len": 2
@@ -71,7 +71,7 @@ fully_paras = {
 ''' Parameters for concat values'''
 concat_paras = {
     "dim1": 512,  # should be the same as encoder out dim
-    "dim2": 32  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
+    "dim2": 64  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
 }
 
 ''' Parameters for CNN encoder'''
@@ -79,7 +79,7 @@ encoder_para = {
     "kernel1": 5,
     "stride1": 2,
     "channel1": 32,
-    "pool1": 2,
+    # "pool1": 2,
     "kernel2": 3,
     "stride2": 2,
     "channel2": 64,
@@ -87,10 +87,11 @@ encoder_para = {
     "stride3": 2,
     "channel3": 128,
     "kernel4": 3,
-    "stride4": 2,
+    "stride4": 1,
     "channel4": 256,
-    "out_dia": 12288
+    "out_dia": 196608
 }
+
 
 
 def conv2d_relu(x, kernel_shape, bias_shape, strides):
@@ -121,7 +122,7 @@ def encoder(x):
     k1 = encoder_para["kernel1"]
     s1 = encoder_para["stride1"]
     d1 = encoder_para["channel1"]
-    p1 = encoder_para["pool1"]
+    # p1 = encoder_para["pool1"]
 
     k2 = encoder_para["kernel2"]
     s2 = encoder_para["stride2"]
@@ -143,11 +144,11 @@ def encoder(x):
         with tf.variable_scope("conv1_1"):
             conv1_1 = conv2d_relu(conv1, [k1, k1, d1, d1], [d1], [1, 1, 1, 1])
 
-        with tf.variable_scope("pool1"):
-            max_pool1 = max_pool(conv1_1, [1, p1, p1, 1], [1, p1, p1, 1])
+        # with tf.variable_scope("pool1"):
+        #     max_pool1 = max_pool(conv1_1, [1, p1, p1, 1], [1, p1, p1, 1])
 
         with tf.variable_scope("conv2"):
-            conv2 = conv2d_relu(max_pool1, [k2, k2, d1, d2], [d2], [1, s2, s2, 1])
+            conv2 = conv2d_relu(conv1_1, [k2, k2, d1, d2], [d2], [1, s2, s2, 1])
         with tf.variable_scope("conv2_1"):
             conv2_1 = conv2d_relu(conv2, [k2, k2, d2, d2], [d2], [1, 1, 1, 1])
 

@@ -22,8 +22,8 @@ total_epoches = 1000
 save_every_n_epoch = 100
 times_per_file = 1
 
-model_save_path = "/home/ubuntu/chg_workspace/rgb/model/encoder/02/model/"
-image_save_path = "/home/ubuntu/chg_workspace/rgb/model/encoder/02/plots/"
+model_save_path = "/home/ubuntu/chg_workspace/rgb/model/encoder/large_output/trial2/model/"
+image_save_path = "/home/ubuntu/chg_workspace/rgb/model/encoder/large_output/trial2/plots/"
 
 file_path_list_images = [
 "/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy/long_good/01/rgb_data_2019_01_17_14:05:39.csv",
@@ -45,7 +45,7 @@ encoder_para = {
     "kernel1": 5,
     "stride1": 2,
     "channel1": 32,
-    "pool1": 2,
+    # "pool1": 2,
     "kernel2": 3,
     "stride2": 2,
     "channel2": 64,
@@ -53,9 +53,9 @@ encoder_para = {
     "stride3": 2,
     "channel3": 128,
     "kernel4": 3,
-    "stride4": 2,
+    "stride4": 1,
     "channel4": 256,
-    "out_dia": 12288
+    "out_dia": 196608
 }
 
 
@@ -80,7 +80,7 @@ def encoder(x):
     k1 = encoder_para["kernel1"]
     s1 = encoder_para["stride1"]
     d1 = encoder_para["channel1"]
-    p1 = encoder_para["pool1"]
+    # p1 = encoder_para["pool1"]
 
     k2 = encoder_para["kernel2"]
     s2 = encoder_para["stride2"]
@@ -102,11 +102,11 @@ def encoder(x):
         with tf.variable_scope("conv1_1"):
             conv1_1 = conv2d_relu(conv1, [k1, k1, d1, d1], [d1], [1, 1, 1, 1])
 
-        with tf.variable_scope("pool1"):
-            max_pool1 = max_pool(conv1_1, [1, p1, p1, 1], [1, p1, p1, 1])
+        # with tf.variable_scope("pool1"):
+        #     max_pool1 = max_pool(conv1_1, [1, p1, p1, 1], [1, p1, p1, 1])
 
         with tf.variable_scope("conv2"):
-            conv2 = conv2d_relu(max_pool1, [k2, k2, d1, d2], [d2], [1, s2, s2, 1])
+            conv2 = conv2d_relu(conv1_1, [k2, k2, d1, d2], [d2], [1, s2, s2, 1])
         with tf.variable_scope("conv2_1"):
             conv2_1 = conv2d_relu(conv2, [k2, k2, d2, d2], [d2], [1, 1, 1, 1])
 
@@ -127,7 +127,7 @@ def decoder(x, batch_size):
     k1 = encoder_para["kernel1"]
     s1 = encoder_para["stride1"]
     d1 = encoder_para["channel1"]
-    p1 = encoder_para["pool1"]
+    # p1 = encoder_para["pool1"]
 
     k2 = encoder_para["kernel2"]
     s2 = encoder_para["stride2"]
@@ -141,11 +141,18 @@ def decoder(x, batch_size):
     s4 = encoder_para["stride4"]
     d4 = encoder_para["channel4"]
 
+    # size_0 = [batch_size, 192, 256, d1]
+    # size_1 = [batch_size, 96, 128, d1]
+    # size_2 = [batch_size, 48, 64, d2]
+    # size_3 = [batch_size, 24, 32, d3]
+    # size_4 = [batch_size, 12, 16, d4]
+
     size_0 = [batch_size, 192, 256, d1]
-    size_1 = [batch_size, 96, 128, d1]
-    size_2 = [batch_size, 48, 64, d2]
-    size_3 = [batch_size, 24, 32, d3]
-    size_4 = [batch_size, 12, 16, d4]
+    # size_1 = [batch_size, 96, 128, d1]
+    size_2 = [batch_size, 96, 128, d2]
+    size_3 = [batch_size, 48, 64, d3]
+    size_4 = [batch_size, 24, 32, d4]
+
     print "building decoder"
 
     # Use conv to decrease kernel number. Use deconv to enlarge map
@@ -173,14 +180,14 @@ def decoder(x, batch_size):
         with tf.variable_scope("conv3"):
             conv3 = conv2d_relu(deconv2, [k3, k3, d2, d1], [d1], [1, 1, 1, 1])
 
-        with tf.variable_scope("deconv3"):
-            deconv3 = deconv2d(conv3, [p1, p1, d1, d1], output_shape=size_1, strides=[1, p1, p1, 1])
-            print "deconv3", deconv3.get_shape()
-        with tf.variable_scope("conv4"):
-            conv4 = conv2d_relu(deconv3, [k2, k2, d1, d1], [d1], [1, 1, 1, 1])
+        # with tf.variable_scope("deconv3"):
+        #     deconv3 = deconv2d(conv3, [p1, p1, d1, d1], output_shape=size_1, strides=[1, p1, p1, 1])
+        #     print "deconv3", deconv3.get_shape()
+        # with tf.variable_scope("conv4"):
+        #     conv4 = conv2d_relu(deconv3, [k2, k2, d1, d1], [d1], [1, 1, 1, 1])
 
         with tf.variable_scope("deconv4"):
-            deconv4 = deconv2d(conv4, [s1, s1, d1, d1], output_shape=size_0, strides=[1, s1, s1, 1])
+            deconv4 = deconv2d(conv3, [s1, s1, d1, d1], output_shape=size_0, strides=[1, s1, s1, 1])
             print "deconv3", deconv4.get_shape()
         with tf.variable_scope("conv5"):
             conv5 = conv2d_relu(deconv4, [k1, k1, d1, input_channel], [input_channel], [1, 1, 1, 1])
@@ -324,12 +331,6 @@ def tf_training(data_house, file_num):
             print('loss=%s' % sess.run(loss, feed_dict={x_: batch_data}))
 
             if epoch % 10 == 0:
-                # decode_img = sess.run(decode_result, feed_dict={x_: batch_data})
-                # save_name = image_save_path + "epoch_" + str(epoch) + ".png"
-                # img_to_save = decode_img[0, :, :, :]
-                # cv2.imwrite(save_name, img_to_save)
-                # opencv image save here
-
                 decode_img = sess.run(decode_result, feed_dict={x_: batch_data})
                 save_name = image_save_path + "epoch_" + str(epoch) + ".png"
                 save_name_ori = image_save_path + "epoch_" + str(epoch) + "_ori.png"
@@ -337,6 +338,7 @@ def tf_training(data_house, file_num):
                 img_ori = batch_data[0, :, :, :]
                 cv2.imwrite(save_name, img_to_save)
                 cv2.imwrite(save_name_ori, img_ori)
+                # opencv image save here
 
             if epoch % save_every_n_epoch == 0:
                 saver.save(sess,

@@ -24,17 +24,17 @@ if_train_encoder = True
 if_continue_train = False
 if_regularization = True
 
-model_save_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/02_standard_data/model/"
-image_save_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/02_standard_data/plot/"
+model_save_path = "/home/ubuntu/chg_workspace/depth/model/cnn_nornn/01/model/"
+image_save_path = "/home/ubuntu/chg_workspace/depth/model/cnn_nornn/01/plot/"
 
-encoder_model = "/home/ubuntu/chg_workspace/rgb/model/encoder/01/model/simulation_autoencoder_900.ckpt"
+encoder_model = "/home/ubuntu/chg_workspace/depth/model/encoder/01/model/simulation_autoencoder_500.ckpt"
 last_model = ""
 
 ''' Parameters for input vectors'''
 input_paras = {
     "input1_dim_x": 256,
     "input1_dim_y": 192,
-    "input1_dim_channel": 3,
+    "input1_dim_channel": 1,
     "input2_dim": 4  # commands
 }
 
@@ -54,7 +54,7 @@ states_num_one_line = 17
 labels_num_one_line = 4
 
 # training_file_path = "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train"
-training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_depth_img/hzy"
+training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_deepth_img/deepth_rgb_semantics/gazebo_rate_092"
 
 ''' Parameters for Computer'''
 gpu_num = 2
@@ -228,7 +228,7 @@ def get_batch(seq, data):
     return result
 
 
-def read_threading(filename_img, filename_state, filename_label, data_read_flags, house):
+def read_threading(filename_img, filename_state, filename_label, file_seq, data_house):
     """
     Read data thread function.
     :param filename_pcl:  pcl filename
@@ -279,22 +279,7 @@ def read_threading(filename_img, filename_state, filename_label, data_read_flags
     # print labels_ref
 
     ''' Store data to house '''
-    looking_for_free_space_flag = True
-    while looking_for_free_space_flag:
-        time.sleep(0.05)
-        for i_flag in range(len(data_read_flags)):
-            if data_read_flags[i_flag] == 0:
-                data_read_flags[i_flag] = 1
-                print "found available space, copy data... "
-                house[i_flag] = [data_img, commands_input, labels_ref]
-                del data_img
-                del commands_input
-                del labels_ref
-                # label_to_draw = np.reshape(labels_ref[:, 0], [img_num])
-                # draw_plots(np.arange(0, img_num), label_to_draw)
-                data_read_flags[i_flag] = 2
-                looking_for_free_space_flag = False
-                break
+    data_house[file_seq] = [data_img, commands_input, labels_ref]
 
 
 def read_img_threading(data_img, filename_img):
@@ -315,33 +300,9 @@ def read_img_threading(data_img, filename_img):
                 for row in csv_reader:
                     for i in range(img_height):
                         for j in range(img_wid):
-                            for k in range(3):
-                                data_img[i_row, i, j, k] = row[i * img_wid * 3 + j * 3 + k]
+                            data_img[i_row, i, j] = row[i * img_wid + j]
                     i_row = i_row + 1
                 # list_result.append(data)
-        except OverflowError:
-            maxInt = int(maxInt / 10)
-            decrement = True
-
-
-def read_pcl(data, filename):
-    maxInt = sys.maxsize
-    decrement = True
-    while decrement:
-        # decrease the maxInt value by factor 10
-        # as long as the OverflowError occurs.
-        decrement = False
-        try:
-            csv.field_size_limit(maxInt)
-            with open(filename, mode='r') as csvfile:
-                csv_reader = csv.reader(csvfile, delimiter=',', quotechar='|')
-                i_row = 0
-                for row in csv_reader:
-                    for i in range(img_wid):
-                        for j in range(img_wid):
-                            for k in range(img_height):
-                                data[i_row, i, j, k, 0] = row[i * img_wid * img_height + j * img_height + k]
-                    i_row = i_row + 1
         except OverflowError:
             maxInt = int(maxInt / 10)
             decrement = True
@@ -368,7 +329,7 @@ def read_others(data, filename, num_one_line):
             decrement = True
 
 
-def tf_training(data_read_flags, data_house, file_num):
+def tf_training(data_house, file_num):
     """
     Main training function
     :param data_read_flags: flag to find stored data
@@ -386,7 +347,7 @@ def tf_training(data_read_flags, data_house, file_num):
         global_step = tf.train.get_or_create_global_step()
         tower_grads = []
         rgb_data = tf.placeholder("float", name="rgb_data", shape=[None, input_dimension_y, input_dimension_x,
-                                                                    input_channel])
+                                  input_channel])
         line_data_2 = tf.placeholder("float", name="line_data", shape=[None, input_paras["input2_dim"]])  # commands
         reference = tf.placeholder("float", name="reference", shape=[None, fully_paras["output_len"]])
 
@@ -503,34 +464,15 @@ def tf_training(data_read_flags, data_house, file_num):
                 print "epoch: " + str(epoch)
                 t0 = time.time()
 
+                seq_array = generate_shuffled_array(0, file_num)
                 ''' waiting for data '''
                 for file_seq in range(file_num):
-                    # Check flags to find data
-                    looking_for_data_flag = True
+                    read_seq = seq_array[file_seq]
 
-                    data_mat_pcl = np.array(0)
-                    data_mat_state = np.array(0)
-                    data_mat_command = np.array(0)
-                    data_mat_label = np.array(0)
-                    data_num = 0
-
-                    while looking_for_data_flag:
-                        time.sleep(0.05)
-                        for i_flag in range(len(data_read_flags)):
-                            if data_read_flags[i_flag] == 2:
-                                print "found available data.. "
-                                data_read_flags[i_flag] = 3
-                                data_mat_pcl = data_house[i_flag][0]
-                                data_mat_command = data_house[i_flag][1]
-                                data_mat_label = data_house[i_flag][2]
-                                data_num = data_mat_pcl.shape[0]
-                                data_read_flags[i_flag] = 0
-                                looking_for_data_flag = False
-                                break
-                    print "done loading data.., data size = ", data_mat_pcl.shape[0]
-                    if data_mat_pcl.shape[0] <= batch_size + 1:
-                        print "Too little data, continue to next file!"
-                        continue
+                    data_mat_pcl = data_house[read_seq][0]
+                    data_mat_command = data_house[read_seq][1]
+                    data_mat_label = data_house[read_seq][2]
+                    data_num = data_mat_pcl.shape[0]
 
                     batch_num = int(data_num / batch_size)
 
@@ -560,7 +502,6 @@ def tf_training(data_read_flags, data_house, file_num):
                             del label_batch
 
                     del data_mat_pcl
-                    del data_mat_state
                     del data_mat_command
                     del data_mat_label
                     del data_num
@@ -577,43 +518,31 @@ if __name__ == '__main__':
     scan = file_walker.ScanFile(training_file_path)
     files = scan.scan_files()
 
-    file_path_clouds = []
+    file_path_depth = []
     file_path_states = []
     file_path_labels = []
 
     file_type = '.csv'
     for file in files:
         if os.path.splitext(file)[1] == file_type:
-            if os.path.splitext(file)[0].split('/')[-1].split('_')[0] == 'rgb':
-                file_path_clouds.append(file)
-                file_path_states.append(file.replace('rgb', 'uav'))
-                file_path_labels.append(file.replace('rgb', 'label'))
+            if os.path.splitext(file)[0].split('/')[-1].split('_')[0] == 'depth':
+                file_path_depth.append(file)
+                file_path_states.append(file.replace('depth', 'uav'))
+                file_path_labels.append(file.replace('depth', 'label'))
 
-    print "Found " + str(len(file_path_clouds)) + " files to train!!!"
+    print "Found " + str(len(file_path_depth)) + " files to train!!!"
 
-    '''Multiple thread'''
-    pool = Pool(processes=5)
+    files_num = len(file_path_depth)
+    data_house = [0 for i in range(files_num)]
 
-    data_read_flags = multiprocessing.Manager().list([0, 0, 0, 0])
-    data_house = multiprocessing.Manager().list([0, 0, 0, 0])
+    # Data Reading
+    for seq in range(files_num):
+        # pool.apply_async(test)
+        filename_depth_this = file_path_depth[seq]
+        filename_states_this = file_path_states[seq]
+        filename_labels_this = file_path_labels[seq]
 
-    # Training thread
-    files_num = len(file_path_clouds)
-    pool.apply_async(tf_training, args=(data_read_flags, data_house, files_num))
+        read_threading(filename_depth_this, filename_states_this, filename_labels_this, seq, data_house)
 
-    # Data Reading Thread
-    for i_epoch in range(epoch_num):
-        random_seq = generate_shuffled_array(0, files_num, shuffle=True)
-
-        for i_pool in range(files_num):
-            # pool.apply_async(test)
-            filename_rgb_this = file_path_clouds[random_seq[i_pool]]
-            filename_states_this = file_path_states[random_seq[i_pool]]
-            filename_labels_this = file_path_labels[random_seq[i_pool]]
-            pool.apply_async(read_threading, args=(filename_rgb_this, filename_states_this, filename_labels_this,
-                                                   data_read_flags, data_house))
-    print "Created " + str(epoch_num * files_num + 1) + " threads"
-
-    pool.close()
-    pool.join()
+    tf_training(data_house, files_num)
 
