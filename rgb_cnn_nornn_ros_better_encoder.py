@@ -14,7 +14,7 @@ import time
 
 commands_compose_each = 1  # Should be "input3_dim": 8  / 4
 
-model_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/02_standard_data/model/simulation_cnn_rnn200.ckpt"
+model_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/04_better_encoder/model/simulation_cnn_rnn200.ckpt"
 
 ''' Parameters for input vectors'''
 input_paras = {
@@ -37,7 +37,7 @@ img_channel = input_channel
 ''' Parameters for concat fully layers'''
 fully_paras = {
     "raw_batch_size": 20,
-    "input_len": 544,
+    "input_len": 576,
     "layer1_len": 256,
     "layer2_len": 64,
     "output_len": 2
@@ -46,7 +46,7 @@ fully_paras = {
 ''' Parameters for concat values'''
 concat_paras = {
     "dim1": 512,  # should be the same as encoder out dim
-    "dim2": 32  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
+    "dim2": 64  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
 }
 
 ''' Parameters for CNN encoder'''
@@ -54,7 +54,7 @@ encoder_para = {
     "kernel1": 5,
     "stride1": 2,
     "channel1": 32,
-    "pool1": 2,
+    # "pool1": 2,
     "kernel2": 3,
     "stride2": 2,
     "channel2": 64,
@@ -62,9 +62,9 @@ encoder_para = {
     "stride3": 2,
     "channel3": 128,
     "kernel4": 3,
-    "stride4": 2,
+    "stride4": 1,
     "channel4": 256,
-    "out_dia": 12288
+    "out_dia": 196608
 }
 
 
@@ -113,7 +113,7 @@ def encoder(x):
     k1 = encoder_para["kernel1"]
     s1 = encoder_para["stride1"]
     d1 = encoder_para["channel1"]
-    p1 = encoder_para["pool1"]
+    # p1 = encoder_para["pool1"]
 
     k2 = encoder_para["kernel2"]
     s2 = encoder_para["stride2"]
@@ -135,11 +135,11 @@ def encoder(x):
         with tf.variable_scope("conv1_1"):
             conv1_1 = conv2d_relu(conv1, [k1, k1, d1, d1], [d1], [1, 1, 1, 1])
 
-        with tf.variable_scope("pool1"):
-            max_pool1 = max_pool(conv1_1, [1, p1, p1, 1], [1, p1, p1, 1])
+        # with tf.variable_scope("pool1"):
+        #     max_pool1 = max_pool(conv1_1, [1, p1, p1, 1], [1, p1, p1, 1])
 
         with tf.variable_scope("conv2"):
-            conv2 = conv2d_relu(max_pool1, [k2, k2, d1, d2], [d2], [1, s2, s2, 1])
+            conv2 = conv2d_relu(conv1_1, [k2, k2, d1, d2], [d2], [1, s2, s2, 1])
         with tf.variable_scope("conv2_1"):
             conv2_1 = conv2d_relu(conv2, [k2, k2, d2, d2], [d2], [1, 1, 1, 1])
 
@@ -296,7 +296,8 @@ if __name__ == '__main__':
                                      fully_paras["layer2_len"])
 
     with tf.variable_scope("relu_all_4"):
-        result = relu_layer(relu_data_all_3, fully_paras["layer2_len"], fully_paras["output_len"])
+        result = relu_layer(relu_data_all_3, fully_paras["layer2_len"],
+                            fully_paras["output_len"])
 
     ''' Predicting '''
     variables_to_restore = tf.contrib.framework.get_variables_to_restore()

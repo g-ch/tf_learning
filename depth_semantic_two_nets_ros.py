@@ -2,26 +2,31 @@ import tensorflow as tf
 import math
 import numpy as np
 import rospy
-import sensor_msgs.point_cloud2 as pc2
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 from std_msgs.msg import Float64
 from nav_msgs.msg import Odometry
+from darknet_ros_msgs.msg import BoundingBoxes
 from geometry_msgs.msg import Twist
 import matplotlib.pyplot as plt
 import cv2
-import time
 
 commands_compose_each = 1  # Should be "input3_dim": 8  / 4
 
-model_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/02_standard_data/model/simulation_cnn_rnn200.ckpt"
+model_path = "/home/ubuntu/chg_workspace/depth_semantic/model/two_nets/model/depth_semantic_two_nets/model/simulation_cnn_rnn250.ckpt"
 
 ''' Parameters for input vectors'''
 input_paras = {
     "input1_dim_x": 256,
     "input1_dim_y": 192,
-    "input1_dim_channel": 3,
+    "input1_dim_channel": 1,
     "input2_dim": 4  # commands
+}
+
+input_semantic_paras = {
+    "input_dim_x": 256,
+    "input_dim_y": 192,
+    "input_dim_channel": 1,
 }
 
 commands_compose_each = 1  # Should be "input3_dim": 4  / 4
@@ -37,7 +42,7 @@ img_channel = input_channel
 ''' Parameters for concat fully layers'''
 fully_paras = {
     "raw_batch_size": 20,
-    "input_len": 544,
+    "input_len": 576,
     "layer1_len": 256,
     "layer2_len": 64,
     "output_len": 2
@@ -46,7 +51,8 @@ fully_paras = {
 ''' Parameters for concat values'''
 concat_paras = {
     "dim1": 512,  # should be the same as encoder out dim
-    "dim2": 32  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
+    "dim2": 32,  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
+    "dim3": 32   # for semantic info
 }
 
 ''' Parameters for CNN encoder'''
@@ -67,6 +73,23 @@ encoder_para = {
     "out_dia": 12288
 }
 
+''' Parameters for semantic part'''
+semantic_para = {
+    "kernel1": 5,
+    "stride1": 2,
+    "channel1": 8,
+    "pool1": 2,
+    "kernel2": 3,
+    "stride2": 2,
+    "channel2": 16,
+    "pool2": 2,
+    "kernel3": 3,
+    "stride3": 2,
+    "channel3": 32,
+    "out_dia": 1536,
+    "fully1": 64,
+    "fully2": 32
+}
 
 ''' Parameters for ros node '''
 new_msg_received = False
@@ -85,7 +108,13 @@ yaw_backward = 0.0
 yaw_leftward = 0.0
 yaw_rightward = 0.0
 
-rgb_image = np.zeros([1, img_height, img_wid, img_channel])  # bgr in opencv form
+semantic_img_height = 480
+semantic_img_width = 640
+
+# image_data = np.zeros([1, img_height, img_wid, img_channel])
+depth_image = np.zeros([1, img_height, img_wid, 1])  # bgr in opencv form
+semantic_origin_size = np.zeros([semantic_img_height, semantic_img_width])
+semantic_image = np.zeros([1, img_height, img_wid, 1])
 bridge = CvBridge()
 
 
@@ -156,6 +185,52 @@ def encoder(x):
             return conv4_1
 
 
+def semantic_networks(x):
+    print "building semantic network.."
+    k1 = semantic_para["kernel1"]
+    s1 = semantic_para["stride1"]
+    d1 = semantic_para["channel1"]
+    p1 = semantic_para["pool1"]
+
+    k2 = semantic_para["kernel2"]
+    s2 = semantic_para["stride2"]
+    d2 = semantic_para["channel2"]
+    p2 = semantic_para["pool2"]
+
+    k3 = semantic_para["kernel3"]
+    s3 = semantic_para["stride3"]
+    d3 = semantic_para["channel3"]
+
+    out_dia = semantic_para["out_dia"]
+    f1 = semantic_para["fully1"]
+    f2 = semantic_para["fully2"]
+
+    with tf.variable_scope("semantic"):
+        with tf.variable_scope("conv1"):
+            conv1 = conv2d_relu(x, [k1, k1, input_semantic_paras["input_dim_channel"], d1], [d1], [1, s1, s1, 1])
+
+        with tf.variable_scope("pool1"):
+            max_pool1 = max_pool(conv1, [1, p1, p1, 1], [1, p1, p1, 1])
+
+        with tf.variable_scope("conv2"):
+            conv2 = conv2d_relu(max_pool1, [k2, k2, d1, d2], [d2], [1, s2, s2, 1])
+
+        with tf.variable_scope("pool2"):
+            max_pool2 = max_pool(conv2, [1, p2, p2, 1], [1, p2, p2, 1])
+
+        with tf.variable_scope("conv3"):
+            conv3 = conv2d_relu(max_pool2, [k3, k3, d2, d3], [d3], [1, s3, s3, 1])
+
+        with tf.variable_scope("fully1"):
+            vector_flat = tf.reshape(conv3, [-1, out_dia])
+            fully1 = relu_layer(vector_flat, out_dia, f1)
+
+        with tf.variable_scope("fully2"):
+            fully2 = relu_layer(fully1, f1, f2)
+
+            return fully2
+
+
 class Networkerror(RuntimeError):
     """
     Error print
@@ -164,18 +239,82 @@ class Networkerror(RuntimeError):
         self.args = arg
 
 
-def callBackRGB(img):
+def callBackSemantic(objects):
+
+    global semantic_image, semantic_origin_size
+    semantic_image[:, :, :, :] = 0
+    semantic_origin_size[:, :] = 0
+
+    for box in objects.bounding_boxes:
+        label = 0
+        print box.Class
+        if box.Class == 'person':
+            label = 7
+        elif box.Class == 'cat':
+            label = 6
+        elif box.Class == 'dog':
+            label = 6
+        elif box.Class == 'laptop':
+            label = 5
+        elif box.Class == 'bed':
+            label = 5
+        elif box.Class == 'chair':
+            label = 5
+        elif box.Class == 'diningtable':
+            label = 5
+        elif box.Class == 'sofa':
+            label = 5
+        elif box.Class == 'window':
+            label = 2
+        elif box.Class == 'door':
+            label = 2
+        else:
+            label = 3
+        range_x_min = box.xmin
+        range_x_max = box.xmax
+        range_y_min = box.ymin
+        range_y_max = box.ymax
+
+        if range_x_min > semantic_img_width - 1:
+            range_x_min = semantic_img_width - 1
+        if range_x_min < 0:
+            range_x_min = 0
+        if range_x_max > semantic_img_width - 1:
+            range_x_max = semantic_img_width - 1
+        if range_x_max < 0:
+            range_x_max = 0
+
+        # for i in range(range_y_min - 1, range_y_max):
+        #     for j in range(range_x_min - 1, range_x_max):
+        #         semantic_origin_size[i, j] = np.trunc(label * 32)
+
+        semantic_origin_size[range_y_min - 1:range_y_max, range_x_min - 1:range_x_max] = np.trunc(label * 32)
+
+        # semantic_list = np.array(semantic_origin_size).reshape(1, img_height, img_wid, 1)
+        # cv2.imshow("semantic", semantic_origin_size)
+        # cv2.waitKey(5)
+        semantic_image_list = cv2.resize(semantic_origin_size, (img_wid, img_height), interpolation=cv2.INTER_AREA)
+        semantic_image = np.array(semantic_image_list).reshape(1, img_height, img_wid, 1)
+
+
+def callBackDepth(img):
     try:
-        cv_image = bridge.imgmsg_to_cv2(img, "bgr8")
+        cv_image = bridge.imgmsg_to_cv2(img)
     except CvBridgeError as e:
         print(e)
 
-    global rgb_image, new_msg_received
-    rgb_image_list = cv2.resize(cv_image, (img_wid, img_height), interpolation=cv2.INTER_AREA)
-    # cv2.imshow("rgb", rgb_image_list)
+    global depth_image, new_msg_received
+    depth_image_list = cv2.resize(cv_image, (img_wid, img_height), interpolation=cv2.INTER_AREA)
+    # cv2.imshow("rgb", depth_image_list)
     # cv2.waitKey(5)
-    rgb_image = np.array(rgb_image_list).reshape(1, img_height, img_wid, img_channel)
+    depth_image = np.array(depth_image_list).reshape(1, img_height, img_wid, 1)
+    depth_image[depth_image > 6.3] = 6.3
+    depth_image[np.isnan(depth_image)] = 6.3
+    depth_image = depth_image * 40
+    depth_image = np.trunc(depth_image[:, :, :, :])
     new_msg_received = True
+    # image_data[:, :, :, 0] = depth_image[:, :, :, 0]
+    # image_data[:, :, :, 1] = semantic_image[:, :, :, 0]
 
 
 def callBackDeltYaw(data):
@@ -246,20 +385,28 @@ def draw_plots(x, y):
 if __name__ == '__main__':
 
     rospy.init_node('predict', anonymous=True)
-    rospy.Subscriber("/camera/rgb/image_raw", Image, callBackRGB)
+    rospy.Subscriber("/camera/depth/image_raw", Image, callBackDepth)
     rospy.Subscriber("/radar/delt_yaw", Float64, callBackDeltYaw)
     rospy.Subscriber("/radar/current_yaw", Float64, callBackCurrentYaw)
     rospy.Subscriber("/odom", Odometry, callBackOdom)
+    rospy.Subscriber("/darknet_ros/bounding_boxes", BoundingBoxes, callBackSemantic)
     cmd_pub = rospy.Publisher("/mobile_base/commands/velocity", Twist, queue_size=10)
     move_cmd = Twist()
 
     ''' Graph building '''
-    rgb_data = tf.placeholder("float", name="rgb_data", shape=[None, input_dimension_y, input_dimension_x,
-                                                               input_channel])
+    depth_data = tf.placeholder("float", name="depth_data", shape=[None, input_dimension_y, input_dimension_x,
+                                                                   input_channel])
+    semantic_data = tf.placeholder("float", name="semantic_data", shape=[None, input_semantic_paras["input_dim_y"],
+                                                                         input_semantic_paras["input_dim_x"],
+                                                                         input_semantic_paras["input_dim_channel"]])
+
     line_data_2 = tf.placeholder("float", name="line_data", shape=[None, input_paras["input2_dim"]])  # commands
 
-    # 3D CNN
-    encode_vector = encoder(rgb_data)
+    # Semantic data
+    semantic_vector_flat = semantic_networks(semantic_data)
+
+    # encoder
+    encode_vector = encoder(depth_data)
     print "encoder built"
     # To flat vector
     encode_vector_flat = tf.reshape(encode_vector, [-1, encoder_para["out_dia"]])
@@ -279,7 +426,7 @@ if __name__ == '__main__':
                                         concat_paras["dim2"])
 
     # Concat, Note: dimension parameter should be 1, considering batch size
-    concat_vector = tf.concat([map_data_line, commands_data_line], 1)
+    concat_vector = tf.concat([map_data_line, commands_data_line, semantic_vector_flat], 1)
     print "concat complete"
 
     # Add a fully connected layer for all input
@@ -302,7 +449,7 @@ if __name__ == '__main__':
     variables_to_restore = tf.contrib.framework.get_variables_to_restore()
     restorer = tf.train.Saver(variables_to_restore)
 
-    rate = rospy.Rate(100)  # 100hz
+    rate = rospy.Rate(20)  # 20hz
 
     config = tf.ConfigProto(allow_soft_placement=True)  # log_device_placement=True
     config.gpu_options.allow_growth = True  # only 300M memory
@@ -322,8 +469,8 @@ if __name__ == '__main__':
                 data3_yaw_rightward = np.ones([1, commands_compose_each]) * yaw_rightward
                 data3_to_feed = np.concatenate([data3_yaw_forward, data3_yaw_backward, data3_yaw_leftward, data3_yaw_rightward], axis=1)
 
-                results = sess.run(result, feed_dict={rgb_data: rgb_image, line_data_2: data3_to_feed})
-                # cv2.imshow("rgb2", rgb_image[0,:,:,:])
+                results = sess.run(result, feed_dict={depth_data: depth_image, semantic_data: semantic_image, line_data_2: data3_to_feed})
+                # cv2.imshow("rgb2", depth_image[0,:,:,:])
                 # cv2.waitKey(5)
 
                 move_cmd.linear.x = results[0, 0] * 0.7  # 1.0
@@ -331,6 +478,12 @@ if __name__ == '__main__':
                 move_cmd.angular.z = (2 * results[0, 1] - 1) * 0.88  # 0.88
 
                 cmd_pub.publish(move_cmd)
+
+                # cv2.imshow("semantic image", semantic_image[0,:,:,:].astype(np.uint8))
+                # cv2.waitKey(5)
+
+                # initialize
+                semantic_image = np.zeros([1, img_height, img_wid, 1])
 
                 # print yaw_forward, yaw_backward, yaw_leftward, yaw_rightward
                 print data3_to_feed

@@ -101,7 +101,7 @@ if __name__ == "__main__":
     # print data_mat[2,:,:,:,0]
 
     # file_name = "/home/ubuntu/chg_workspace/data/new_csvs/backward_unable/chg_route1_trial1/pcl_data_2018_12_12_14:03:47.csv"
-    file_name = "/home/ubuntu/chg_workspace/data/yaw_in_map/encoder/pcl_data_2018_12_26_16:00:56.csv"
+    file_name = "/home/ubuntu/catkin_ws/src/hybrid_local_map/uavInfo/src/testdata/pcl_data_2018_12_24_19:06:20.csv"
     clouds = open(file_name, "r")
     img_num = len(clouds.readlines())
     clouds.close()
@@ -110,7 +110,7 @@ if __name__ == "__main__":
 
     print "data_mat", data_mat
 
-    path = '/home/ubuntu/chg_workspace/data/plots/test/'
+    path = '/home/ubuntu/chg_workspace/data/plots/input_pcl_test/'
     for i in range(180):
         name = path + str(i) + '.png'
         compare_save_3d_to_2d(data_mat[i, :, :, :, 0], data_mat[i, :, :, :, 0], 0, 1, 4, 12, 1, name)

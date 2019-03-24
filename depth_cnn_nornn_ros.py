@@ -11,16 +11,20 @@ from geometry_msgs.msg import Twist
 import matplotlib.pyplot as plt
 import cv2
 import time
+import csv
+
+fileobj = open('test_depth.csv', 'wb')
+file_writer = csv.writer(fileobj)
 
 commands_compose_each = 1  # Should be "input3_dim": 8  / 4
 
-model_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/02_standard_data/model/simulation_cnn_rnn200.ckpt"
+model_path = "/home/ubuntu/chg_workspace/depth/model/cnn_nornn/01/model/simulation_cnn_rnn200.ckpt"
 
 ''' Parameters for input vectors'''
 input_paras = {
     "input1_dim_x": 256,
     "input1_dim_y": 192,
-    "input1_dim_channel": 3,
+    "input1_dim_channel": 1,
     "input2_dim": 4  # commands
 }
 
@@ -164,17 +168,43 @@ class Networkerror(RuntimeError):
         self.args = arg
 
 
-def callBackRGB(img):
+def callBackDepth(img):
     try:
-        cv_image = bridge.imgmsg_to_cv2(img, "bgr8")
+        cv_image = bridge.imgmsg_to_cv2(img)
     except CvBridgeError as e:
         print(e)
 
     global rgb_image, new_msg_received
+
     rgb_image_list = cv2.resize(cv_image, (img_wid, img_height), interpolation=cv2.INTER_AREA)
+
+    rgb_image_list = rgb_image_list #* 0.001  # mm -> m
+
     # cv2.imshow("rgb", rgb_image_list)
     # cv2.waitKey(5)
-    rgb_image = np.array(rgb_image_list).reshape(1, img_height, img_wid, img_channel)
+    rgb_image_list[rgb_image_list > 6.3] = 6.3
+    rgb_image_list[np.isnan(rgb_image_list)] = 6.3
+    rgb_image_list = rgb_image_list * 40
+
+    rgb_image_trunc = np.trunc(rgb_image_list).astype(np.uint8)
+
+    rgb_image = np.array(rgb_image_trunc).reshape(1, img_height, img_wid, img_channel)
+
+    cv2.imshow("depth", rgb_image[0, :, :, :])
+    cv2.waitKey(5)
+
+    line_to_save_as_csv = np.zeros([img_height * img_wid, 1])
+    mat_to_save = np.zeros([img_height * img_wid, 1])
+    # for i in range(img_height):
+    #     for j in range(img_wid):
+    #         line_to_save_as_csv[i * img_wid + j, 0] = rgb_image[0, i, j, 0]
+    # mat_to_save = np.concatenate((mat_to_save, line_to_save_as_csv), axis=0)
+    # with open('depth_short12.csv', 'wb') as depth_csv:
+    #     np.savetxt(depth_csv, mat_to_save, delimiter=',')
+    # file_writer.writerow(line_to_save_as_csv, delimiter=',')
+
+    # cv2.imshow("depth", rgb_image)
+    # cv2.waitKey(5)
     new_msg_received = True
 
 
@@ -246,7 +276,7 @@ def draw_plots(x, y):
 if __name__ == '__main__':
 
     rospy.init_node('predict', anonymous=True)
-    rospy.Subscriber("/camera/rgb/image_raw", Image, callBackRGB)
+    rospy.Subscriber("/camera/depth/image_raw", Image, callBackDepth)
     rospy.Subscriber("/radar/delt_yaw", Float64, callBackDeltYaw)
     rospy.Subscriber("/radar/current_yaw", Float64, callBackCurrentYaw)
     rospy.Subscriber("/odom", Odometry, callBackOdom)

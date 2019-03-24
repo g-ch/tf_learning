@@ -7,7 +7,6 @@ import sys
 import csv
 import time
 import gc
-import file_walker
 import os
 from multiprocessing import Pool
 import multiprocessing
@@ -20,9 +19,9 @@ epoch_num = 500
 save_every_n_epoch = 50
 training_times_simple_epoch = 2
 if_train_encoder = False
-if_continue_train = False
+if_continue_train = True
 
-model_save_path = "/home/ubuntu/chg_workspace/3dcnn/model/cnn_rnn/01/model_short_rnn_layers_with_swing/"
+model_save_path = "/home/ubuntu/chg_workspace/3dcnn/model/cnn_rnn/01/model_short_rnn_layers/"
 image_save_path = "/home/ubuntu/chg_workspace/3dcnn/model/cnn_rnn/01/plot3/"
 
 encoder_model = "/home/ubuntu/chg_workspace/3dcnn/model/auto_encoder/encoder_003/model/simulation_autoencoder_700.ckpt"
@@ -32,12 +31,12 @@ last_model = "/home/ubuntu/chg_workspace/3dcnn/model/cnn_rnn/01/model_short_rnn_
 input_paras = {
     "input1_dim_xy": 64,  # point cloud
     "input1_dim_z": 24,  # point cloud
-    "input2_dim": 2,  # states
-    "input3_dim": 4  # commands
+    "input2_dim": 8,  # states
+    "input3_dim": 8  # commands
 }
 
-states_compose_num = [1, 1]  # total:  "input2_dim": 2
-commands_compose_each = 1  # Should be "input3_dim": 4  / 4
+states_compose_num = [3, 3, 1, 1]  # total:  "input2_dim": 8
+commands_compose_each = 2  # Should be "input3_dim": 8  / 4
 
 input_dimension_xy = input_paras["input1_dim_xy"]
 input_dimension_z = input_paras["input1_dim_z"]
@@ -50,7 +49,54 @@ img_height = input_dimension_z
 states_num_one_line = 17
 labels_num_one_line = 4
 
-training_file_path = "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02"
+file_path_states = ["/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_01/uav_data_2018_12_16_14:01:49.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/uav_data_2018_12_16_16:15:00.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/uav_data_2018_12_16_16:12:38.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/uav_data_2018_12_16_16:06:21.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/uav_data_2018_12_16_16:03:07.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/uav_data_2018_12_16_15:58:53.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/uav_data_2018_12_16_15:51:52.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/uav_data_2018_12_16_15:47:04.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/uav_data_2018_12_16_15:41:55.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/uav_data_2018_12_16_15:37:47.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/uav_data_2018_12_16_14:47:16.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/uav_data_2018_12_16_14:43:20.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/uav_data_2018_12_16_14:38:34.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/uav_data_2018_12_16_14:23:31.csv",
+                    ]
+
+file_path_clouds = ["/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_01/pcl_data_2018_12_16_14:01:49.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/pcl_data_2018_12_16_16:15:00.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/pcl_data_2018_12_16_16:12:38.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/pcl_data_2018_12_16_16:06:21.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/pcl_data_2018_12_16_16:03:07.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/pcl_data_2018_12_16_15:58:53.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/pcl_data_2018_12_16_15:51:52.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/pcl_data_2018_12_16_15:47:04.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/pcl_data_2018_12_16_15:41:55.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/pcl_data_2018_12_16_15:37:47.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/pcl_data_2018_12_16_14:47:16.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/pcl_data_2018_12_16_14:43:20.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/pcl_data_2018_12_16_14:38:34.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/pcl_data_2018_12_16_14:23:31.csv",
+                    ]
+
+file_path_labels = ["/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_01/label_data_2018_12_16_14:01:49.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/label_data_2018_12_16_16:15:00.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/label_data_2018_12_16_16:12:38.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/label_data_2018_12_16_16:06:21.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/label_data_2018_12_16_16:03:07.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/label_data_2018_12_16_15:58:53.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/label_data_2018_12_16_15:51:52.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/label_data_2018_12_16_15:47:04.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/label_data_2018_12_16_15:41:55.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/label_data_2018_12_16_15:37:47.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/label_data_2018_12_16_14:47:16.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/label_data_2018_12_16_14:43:20.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/label_data_2018_12_16_14:38:34.csv",
+                    "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/label_data_2018_12_16_14:23:31.csv",
+                    ]
+
 
 ''' Parameters for Computer'''
 gpu_num = 2
@@ -58,17 +104,17 @@ gpu_num = 2
 ''' Parameters for RNN'''
 rnn_paras = {
     "raw_batch_size": 20,
-    "time_step": 5,
+    "time_step": 10,
     "state_len": 16,
-    "input_len": 560,
+    "input_len": 592,
     "output_len": 2
 }
 
 ''' Parameters for concat values'''
 concat_paras = {
     "dim1": 512,  # should be the same as encoder out dim
-    "dim2": 16,
-    "dim3": 32  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
+    "dim2": 32,
+    "dim3": 48  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
 }
 
 ''' Parameters for CNN encoder'''
@@ -323,11 +369,16 @@ def read_threading(filename_pcl, filename_state, filename_label, flags, house):
     read_others(data_labels, filename_label, labels_num_one_line)
 
     ''' Get useful states and labels '''
+    states_input_current_yaw_x = np.concatenate([np.reshape(data_states[:, 10], [img_num, 1])
+                                                 for i in range(states_compose_num[0])], axis=1)  # current yaw x
+    states_input_current_yaw_y = np.concatenate([np.reshape(data_states[:, 11], [img_num, 1])
+                                                 for i in range(states_compose_num[1])], axis=1)  # current yaw y
     states_input_linear_vel = np.concatenate([np.reshape(data_states[:, 2], [img_num, 1])
-                                              for i in range(states_compose_num[0])], axis=1)  # linear vel
+                                              for i in range(states_compose_num[2])], axis=1)  # linear vel
     states_input_angular_vel = np.concatenate([np.reshape(data_states[:, 3], [img_num, 1])
-                                               for i in range(states_compose_num[1])], axis=1)  # angular vel
-    states_input = np.concatenate([states_input_linear_vel, states_input_angular_vel], axis=1)
+                                               for i in range(states_compose_num[3])], axis=1)  # angular vel
+    states_input = np.concatenate([states_input_current_yaw_x, states_input_current_yaw_y,
+                                   states_input_linear_vel, states_input_angular_vel], axis=1)
 
     commands_input_forward = np.concatenate([np.reshape(data_states[:, 13], [img_num, 1])
                                              for i in range(commands_compose_each)], axis=1)  # command: forward
@@ -422,8 +473,8 @@ def tf_training(data_read_flags, data_house, file_num):
         tower_grads = []
         cube_data = tf.placeholder("float", name="cube_data", shape=[None, input_dimension_xy, input_dimension_xy,
                                                                      input_dimension_z, 1])
-        line_data_1 = tf.placeholder("float", name="line_data", shape=[None, input_paras["input2_dim"]])  # States
-        line_data_2 = tf.placeholder("float", name="line_data", shape=[None, input_paras["input3_dim"]])  # commands
+        line_data_1 = tf.placeholder("float", name="line_data_1", shape=[None, input_paras["input2_dim"]])  # States
+        line_data_2 = tf.placeholder("float", name="line_data_2", shape=[None, input_paras["input3_dim"]])  # commands
         reference = tf.placeholder("float", name="reference", shape=[None, rnn_paras["output_len"]])
 
         # Optimizer
@@ -566,7 +617,7 @@ def tf_training(data_read_flags, data_house, file_num):
 
                     for training_time_this_file in range(training_times_simple_epoch):
                         # get a random sequence for this file
-                        sequence = generate_shuffled_array(rnn_paras["time_step"], data_num, shuffle=True)
+                        sequence = generate_shuffled_array(rnn_paras["time_step"], data_num, shuffle=False)
 
                         # start batches
                         for batch_seq in range(batch_num):
@@ -588,6 +639,20 @@ def tf_training(data_read_flags, data_house, file_num):
                             # train
                             sess.run(train_op, feed_dict={cube_data: data_pcl_batch, line_data_1: data_state_batch,
                                                           line_data_2: data_command_batch, reference: label_batch})
+
+                            ''' To show '''
+                            result = sess.run(result_this_gpu, feed_dict={cube_data: data_pcl_batch, line_data_1: data_state_batch,
+                                                          line_data_2: data_command_batch, reference: label_batch})
+
+                            label = sess.run(reference_this_gpu, feed_dict={cube_data: data_pcl_batch, line_data_1: data_state_batch,
+                                                          line_data_2: data_command_batch, reference: label_batch})
+
+                            print "drawing"
+                            plt.plot(range(batch_size/2), label[:, 0], color='r')
+                            plt.plot(range(batch_size/2), result[:, 0], color='b')
+                            plt.plot(range(batch_size/2), label[:, 1], color='g')
+                            plt.plot(range(batch_size/2), result[:, 1], color='m')
+                            plt.show()
 
                             del data_pcl_batch
                             del data_state_batch
@@ -637,23 +702,6 @@ def tf_training(data_read_flags, data_house, file_num):
 
 
 if __name__ == '__main__':
-    ''' Search for training data in the training folder '''
-    scan = file_walker.ScanFile(training_file_path)
-    files = scan.scan_files()
-
-    file_path_clouds = []
-    file_path_states = []
-    file_path_labels = []
-
-    file_type = '.csv'
-    for file in files:
-        if os.path.splitext(file)[1] == file_type:
-            if os.path.splitext(file)[0].split('/')[-1].split('_')[0] == 'pcl':
-                file_path_clouds.append(file)
-                file_path_states.append(file.replace('pcl', 'uav'))
-                file_path_labels.append(file.replace('pcl', 'label'))
-
-    print "Found " + str(len(file_path_clouds)) + " files to train!!!"
 
     '''Multiple thread'''
     pool = Pool(processes=5)

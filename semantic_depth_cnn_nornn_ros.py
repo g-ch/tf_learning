@@ -7,6 +7,7 @@ from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 from std_msgs.msg import Float64
 from nav_msgs.msg import Odometry
+from darknet_ros_msgs.msg import BoundingBoxes
 from geometry_msgs.msg import Twist
 import matplotlib.pyplot as plt
 import cv2
@@ -14,13 +15,13 @@ import time
 
 commands_compose_each = 1  # Should be "input3_dim": 8  / 4
 
-model_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/02_standard_data/model/simulation_cnn_rnn200.ckpt"
+model_path = "/home/ubuntu/chg_workspace/depth_semantic/model/cnn_nornn/01/model/simulation_cnn_rnn450.ckpt"
 
 ''' Parameters for input vectors'''
 input_paras = {
     "input1_dim_x": 256,
     "input1_dim_y": 192,
-    "input1_dim_channel": 3,
+    "input1_dim_channel": 2,
     "input2_dim": 4  # commands
 }
 
@@ -85,7 +86,13 @@ yaw_backward = 0.0
 yaw_leftward = 0.0
 yaw_rightward = 0.0
 
-rgb_image = np.zeros([1, img_height, img_wid, img_channel])  # bgr in opencv form
+semantic_img_height = 480
+semantic_img_width = 640
+
+image_data = np.zeros([1, img_height, img_wid, img_channel])
+depth_image = np.zeros([1, img_height, img_wid, 1])  # bgr in opencv form
+semantic_origin_size = np.zeros([semantic_img_height, semantic_img_width])
+semantic_image = np.zeros([1, img_height, img_wid, 1])
 bridge = CvBridge()
 
 
@@ -164,18 +171,78 @@ class Networkerror(RuntimeError):
         self.args = arg
 
 
-def callBackRGB(img):
+def callBackSemantic(objects):
+
+    global semantic_image, semantic_origin_size
+    semantic_image[:, :, :, :] = 0
+    semantic_origin_size[:, :] = 0
+
+    for box in objects.bounding_boxes:
+        label = 0
+        if box.Class == 'person':
+            label = 7
+        elif box.Class == 'cat':
+            label = 6
+        elif box.Class == 'dog':
+            label = 6
+        elif box.Class == 'laptop':
+            label = 5
+        elif box.Class == 'bed':
+            label = 5
+        elif box.Class == 'chair':
+            label = 5
+        elif box.Class == 'diningtable':
+            label = 5
+        elif box.Class == 'sofa':
+            label = 5
+        elif box.Class == 'window':
+            label = 2
+        elif box.Class == 'door':
+            label = 2
+        else:
+            label = 3
+        range_x_min = box.xmin
+        range_x_max = box.xmax
+        range_y_min = box.ymin
+        range_y_max = box.ymax
+
+        if range_x_min > semantic_img_width - 1:
+            range_x_min = semantic_img_width - 1
+        if range_x_min < 0:
+            range_x_min = 0
+        if range_x_max > semantic_img_width - 1:
+            range_x_max = semantic_img_width - 1
+        if range_x_max < 0:
+            range_x_max = 0
+
+        for i in range(range_y_min - 1, range_y_max):
+            for j in range(range_x_min - 1, range_x_max):
+                semantic_origin_size[i, j] = np.trunc(label * 32)
+        # semantic_list = np.array(semantic_origin_size).reshape(1, img_height, img_wid, 1)
+        # cv2.imshow("semantic", semantic_origin_size)
+        # cv2.waitKey(5)
+        semantic_image_list = cv2.resize(semantic_origin_size, (img_wid, img_height), interpolation=cv2.INTER_AREA)
+        semantic_image = np.array(semantic_image_list).reshape(1, img_height, img_wid, 1)
+
+
+def callBackDepth(img):
     try:
-        cv_image = bridge.imgmsg_to_cv2(img, "bgr8")
+        cv_image = bridge.imgmsg_to_cv2(img)
     except CvBridgeError as e:
         print(e)
 
-    global rgb_image, new_msg_received
-    rgb_image_list = cv2.resize(cv_image, (img_wid, img_height), interpolation=cv2.INTER_AREA)
-    # cv2.imshow("rgb", rgb_image_list)
+    global depth_image, new_msg_received
+    depth_image_list = cv2.resize(cv_image, (img_wid, img_height), interpolation=cv2.INTER_AREA)
+    # cv2.imshow("rgb", depth_image_list)
     # cv2.waitKey(5)
-    rgb_image = np.array(rgb_image_list).reshape(1, img_height, img_wid, img_channel)
+    depth_image = np.array(depth_image_list).reshape(1, img_height, img_wid, 1)
+    depth_image[depth_image > 6.3] = 6.3
+    depth_image[np.isnan(depth_image)] = 6.3
+    depth_image = depth_image * 40
+    depth_image = np.trunc(depth_image[:, :, :, :])
     new_msg_received = True
+    image_data[:, :, :, 0] = depth_image[:, :, :, 0]
+    image_data[:, :, :, 1] = semantic_image[:, :, :, 0]
 
 
 def callBackDeltYaw(data):
@@ -246,20 +313,21 @@ def draw_plots(x, y):
 if __name__ == '__main__':
 
     rospy.init_node('predict', anonymous=True)
-    rospy.Subscriber("/camera/rgb/image_raw", Image, callBackRGB)
+    rospy.Subscriber("/camera/depth/image_raw", Image, callBackDepth)
     rospy.Subscriber("/radar/delt_yaw", Float64, callBackDeltYaw)
     rospy.Subscriber("/radar/current_yaw", Float64, callBackCurrentYaw)
     rospy.Subscriber("/odom", Odometry, callBackOdom)
+    rospy.Subscriber("/darknet_ros/bounding_boxes", BoundingBoxes, callBackSemantic)
     cmd_pub = rospy.Publisher("/mobile_base/commands/velocity", Twist, queue_size=10)
     move_cmd = Twist()
 
     ''' Graph building '''
-    rgb_data = tf.placeholder("float", name="rgb_data", shape=[None, input_dimension_y, input_dimension_x,
+    depth_data = tf.placeholder("float", name="depth_data", shape=[None, input_dimension_y, input_dimension_x,
                                                                input_channel])
     line_data_2 = tf.placeholder("float", name="line_data", shape=[None, input_paras["input2_dim"]])  # commands
 
     # 3D CNN
-    encode_vector = encoder(rgb_data)
+    encode_vector = encoder(depth_data)
     print "encoder built"
     # To flat vector
     encode_vector_flat = tf.reshape(encode_vector, [-1, encoder_para["out_dia"]])
@@ -322,8 +390,8 @@ if __name__ == '__main__':
                 data3_yaw_rightward = np.ones([1, commands_compose_each]) * yaw_rightward
                 data3_to_feed = np.concatenate([data3_yaw_forward, data3_yaw_backward, data3_yaw_leftward, data3_yaw_rightward], axis=1)
 
-                results = sess.run(result, feed_dict={rgb_data: rgb_image, line_data_2: data3_to_feed})
-                # cv2.imshow("rgb2", rgb_image[0,:,:,:])
+                results = sess.run(result, feed_dict={depth_data: image_data, line_data_2: data3_to_feed})
+                # cv2.imshow("rgb2", depth_image[0,:,:,:])
                 # cv2.waitKey(5)
 
                 move_cmd.linear.x = results[0, 0] * 0.7  # 1.0

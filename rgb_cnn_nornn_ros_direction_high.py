@@ -14,7 +14,7 @@ import time
 
 commands_compose_each = 1  # Should be "input3_dim": 8  / 4
 
-model_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/02_standard_data/model/simulation_cnn_rnn200.ckpt"
+model_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/03_direction_high/model/simulation_cnn_rnn250.ckpt"
 
 ''' Parameters for input vectors'''
 input_paras = {
@@ -37,16 +37,17 @@ img_channel = input_channel
 ''' Parameters for concat fully layers'''
 fully_paras = {
     "raw_batch_size": 20,
-    "input_len": 544,
+    "input_len": 640,
     "layer1_len": 256,
     "layer2_len": 64,
+    "layer3_len": 64,
     "output_len": 2
 }
 
 ''' Parameters for concat values'''
 concat_paras = {
     "dim1": 512,  # should be the same as encoder out dim
-    "dim2": 32  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
+    "dim2": 128  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
 }
 
 ''' Parameters for CNN encoder'''
@@ -296,7 +297,12 @@ if __name__ == '__main__':
                                      fully_paras["layer2_len"])
 
     with tf.variable_scope("relu_all_4"):
-        result = relu_layer(relu_data_all_3, fully_paras["layer2_len"], fully_paras["output_len"])
+        relu_data_all_4 = relu_layer(relu_data_all_3, fully_paras["layer2_len"],
+                                     fully_paras["layer3_len"])
+
+    with tf.variable_scope("relu_all_5"):
+        result = relu_layer(relu_data_all_4, fully_paras["layer2_len"],
+                            fully_paras["output_len"])
 
     ''' Predicting '''
     variables_to_restore = tf.contrib.framework.get_variables_to_restore()

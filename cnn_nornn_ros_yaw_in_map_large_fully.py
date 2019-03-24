@@ -11,18 +11,19 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import sys
 
-states_compose_num = [3, 3, 1, 1]  # total:  "input2_dim": 8
-commands_compose_each = 2  # Should be "input3_dim": 8  / 4
+commands_compose_each = 1  # Should be "input3_dim": 8  / 4
 
-model_path = "/home/ubuntu/chg_workspace/3dcnn/model/cnn_rnn/01/model_short_rnn_layers_with_swing/simulation_cnn_rnn250.ckpt"
+model_path = "/home/ubuntu/chg_workspace/3dcnn_yaw_in_map/model/only_cnn/03_large_fully/model/simulation_cnn_rnn250.ckpt"
 
 ''' Parameters for input vectors'''
 input_paras = {
     "input1_dim_xy": 64,  # point cloud
     "input1_dim_z": 24,  # point cloud
-    "input2_dim": 8,  # states
-    "input3_dim": 8  # commands
+    "input3_dim": 4  # commands
 }
+
+commands_compose_each = 1  # Should be "input3_dim": 4  / 4
+
 input_dimension_xy = input_paras["input1_dim_xy"]
 input_dimension_z = input_paras["input1_dim_z"]
 img_wid = input_dimension_xy
@@ -30,18 +31,19 @@ img_height = input_dimension_z
 img_height_uplimit = 20
 img_height_downlimit = 4
 
-''' Parameters for RNN'''
-rnn_paras = {
-    "state_len": 16,
-    "input_len": 592,
+''' Parameters for concat fully layers'''
+fully_paras = {
+    "raw_batch_size": 20,
+    "input_len": 1072,
+    "layer1_len": 512,
+    "layer2_len": 128,
     "output_len": 2
 }
 
 ''' Parameters for concat values'''
 concat_paras = {
-    "dim1": 512,  # should be the same as encoder out dim
-    "dim2": 32,
-    "dim3": 48  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
+    "dim1": 1024,  # should be the same as encoder out dim
+    "dim2": 48  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
 }
 
 ''' Parameters for CNN encoder'''
@@ -80,24 +82,6 @@ yaw_leftward = 0.0
 yaw_rightward = 0.0
 
 pcl_arr = np.ones(dtype=np.float32, shape=[1, img_wid, img_wid, img_height, 1])
-
-
-def myrnn_test(x, state_last, input_len, output_len, state_len):
-    """
-    RNN function
-    x: [raw_batch_size, time_step, input_len]
-    state dimension is also weights dimension in hidden layer
-    output_len can be given as you want(same as label dimension)
-    """
-    with tf.variable_scope("rnn"):
-        w = tf.get_variable("weight_x", [input_len, state_len])
-        u = tf.get_variable("weight_s", [state_len, state_len])
-        v = tf.get_variable("weight_y", [state_len, output_len])
-        b = tf.get_variable("bias", [output_len])
-        # state = tf.get_variable("state", [1, state_len], trainable=False, initializer=tf.constant_initializer(0.0))
-        # state = tf.zeros([1, state_len])
-        state = tf.nn.tanh(tf.matmul(state_last, u) + tf.matmul(x, w))  # hidden layer activate function
-        return tf.nn.tanh(tf.matmul(state, v) + b), state  # output layer activate function
 
 
 def conv3d_relu(x, kernel_shape, bias_shape, strides):
@@ -163,7 +147,8 @@ class Networkerror(RuntimeError):
 
 def refillPclArr(arr, point_x, point_y, point_z, intensity, odom_x, odom_y, odom_z):
     resolu = 0.2
-    yaw = yaw_current
+    global yaw_current
+    yaw = yaw_current * 3.15
     x_origin = point_x - odom_x
     y_origin = point_y - odom_y
     x_rotated, y_rotated = rotate(x_origin, y_origin, yaw)
@@ -192,9 +177,12 @@ def callBackPCL(point):
     # unknown: zeros
     pcl_arr = np.zeros(dtype=np.float32, shape=[1, img_wid, img_wid, img_height, 1])
     for p in pc2.read_points(point, field_names=("x", "y", "z", "intensity"), skip_nans=True):
-        if p[3] > 1.0:
-            p[3] = p[3] * 10
-        pcl_arr = refillPclArr(pcl_arr, p[0], p[1], p[2], p[3]/70.0, position_odom_x, position_odom_y, position_odom_z)
+        intensity = 0.0
+        if p[3] == 1.0:
+            intensity = p[3] * 0.5
+        else:
+            intensity = p[3]
+        pcl_arr = refillPclArr(pcl_arr, p[0], p[1], p[2], intensity/7.0, position_odom_x, position_odom_y, position_odom_z)
     global new_msg_received
     new_msg_received = True
 
@@ -243,7 +231,6 @@ def callBackOdom(data):
     global position_odom_x, position_odom_y, position_odom_z, velocity_odom_angular, velocity_odom_linear
     position_odom_x, position_odom_y, position_odom_z = \
         data.pose.pose.position.x, data.pose.pose.position.y, data.pose.pose.position.z
-    # input last velocity for rnn # !!max velocity=0.8, max angular_velocity=1.0
     velocity_odom_linear, velocity_odom_angular = data.twist.twist.linear.x / 0.8, data.twist.twist.angular.z
 
 
@@ -313,9 +300,7 @@ if __name__ == '__main__':
     ''' Graph building '''
     cube_data = tf.placeholder("float", name="cube_data", shape=[None, input_dimension_xy, input_dimension_xy,
                                                                  input_dimension_z, 1])
-    line_data_1 = tf.placeholder("float", name="line_data_1", shape=[None, input_paras["input2_dim"]])  # States
     line_data_2 = tf.placeholder("float", name="line_data_2", shape=[None, input_paras["input3_dim"]])  # commands
-    state_data = tf.placeholder("float", name="state_data", shape=[1, rnn_paras["state_len"]])
 
     # 3D CNN
     encode_vector = encoder(cube_data)
@@ -327,33 +312,36 @@ if __name__ == '__main__':
         map_data_line_0 = relu_layer(encode_vector_flat, encoder_para["out_dia"], concat_paras["dim1"])
     with tf.variable_scope("relu_encoder_2"):
         map_data_line = relu_layer(map_data_line_0, concat_paras["dim1"], concat_paras["dim1"])
-    # Add a fully connected layer for states
-    with tf.variable_scope("relu_states_1"):
-        states_data_line_0 = relu_layer(line_data_1, input_paras["input2_dim"],
-                                        concat_paras["dim2"])
-    with tf.variable_scope("relu_states_2"):
-        states_data_line = relu_layer(states_data_line_0, concat_paras["dim2"], concat_paras["dim2"])
     # Add a fully connected layer for commands
     with tf.variable_scope("relu_commands_1"):
         commands_data_line_0 = relu_layer(line_data_2, input_paras["input3_dim"],
-                                          concat_paras["dim3"])
+                                          concat_paras["dim2"])
     with tf.variable_scope("relu_commands_2"):
-        commands_data_line = relu_layer(commands_data_line_0, concat_paras["dim3"],
-                                        concat_paras["dim3"])
+        commands_data_line = relu_layer(commands_data_line_0, concat_paras["dim2"],
+                                        concat_paras["dim2"])
 
     # Concat, Note: dimension parameter should be 1, considering batch size
-    concat_vector = tf.concat([map_data_line, states_data_line, commands_data_line], 1)
+    concat_vector = tf.concat([map_data_line, commands_data_line], 1)
 
-    # Add a fully connected layer for all input before rnn
+    # Add a fully connected layer for all input
     with tf.variable_scope("relu_all_1"):
-        relu_data_all = relu_layer(concat_vector, rnn_paras["input_len"],
-                                   rnn_paras["input_len"])
+        relu_data_all = relu_layer(concat_vector, fully_paras["input_len"],
+                                   fully_paras["input_len"])
 
-    result, state_returned = myrnn_test(relu_data_all, state_data, rnn_paras["input_len"], rnn_paras["output_len"],
-                                        rnn_paras["state_len"])
+    with tf.variable_scope("relu_all_2"):
+        relu_data_all_2 = relu_layer(relu_data_all, fully_paras["input_len"],
+                                     fully_paras["layer1_len"])
+
+    with tf.variable_scope("relu_all_3"):
+        relu_data_all_3 = relu_layer(relu_data_all_2, fully_paras["layer1_len"],
+                                     fully_paras["layer2_len"])
+
+    with tf.variable_scope("relu_all_4"):
+        result = relu_layer(relu_data_all_3, fully_paras["layer2_len"],
+                                     fully_paras["output_len"])
 
     ''' Predicting '''
-    variables_to_restore = tf.contrib.framework.get_variables_to_restore(exclude=['rnn/state'])
+    variables_to_restore = tf.contrib.framework.get_variables_to_restore()
     restorer = tf.train.Saver(variables_to_restore)
 
     rate = rospy.Rate(100)  # 100hz
@@ -364,49 +352,38 @@ if __name__ == '__main__':
     with tf.Session(config=config) as sess:
         sess.run(tf.global_variables_initializer())  # initialze variables
         restorer.restore(sess, model_path)
-        state_data_give = np.zeros([1, rnn_paras["state_len"]])
 
         print "parameters restored!"
+
+        last_vl = 0.0
+        last_vyaw = 0.0
 
         global new_msg_received
         while not rospy.is_shutdown():
             if new_msg_received:
-                # data2_to_feed = np.ones([1, compose_num[0]]) * yaw_delt
-                data2_current_yaw_x = np.ones([1, states_compose_num[0]]) * yaw_current_x
-                data2_current_yaw_y = np.ones([1, states_compose_num[1]]) * yaw_current_y
-                data2_vl = np.ones([1, states_compose_num[2]]) * velocity_odom_linear
-                data2_va = np.ones([1, states_compose_num[3]]) * velocity_odom_angular
-                data2_to_feed = np.concatenate([data2_current_yaw_x, data2_current_yaw_y, data2_vl, data2_va], axis=1)
-
                 data3_yaw_forward = np.ones([1, commands_compose_each]) * yaw_forward
                 data3_yaw_backward = np.ones([1, commands_compose_each]) * yaw_backward
                 data3_yaw_leftward = np.ones([1, commands_compose_each]) * yaw_leftward
                 data3_yaw_rightward = np.ones([1, commands_compose_each]) * yaw_rightward
                 data3_to_feed = np.concatenate([data3_yaw_forward, data3_yaw_backward, data3_yaw_leftward, data3_yaw_rightward], axis=1)
 
-                results = sess.run(result, feed_dict={cube_data: pcl_arr, line_data_1: data2_to_feed,
-                                                      line_data_2: data3_to_feed, state_data: state_data_give})
+                results = sess.run(result, feed_dict={cube_data: pcl_arr, line_data_2: data3_to_feed})
 
-                state_data_give = sess.run(state_returned,
-                                           feed_dict={cube_data: pcl_arr, line_data_1: data2_to_feed,
-                                                      line_data_2: data3_to_feed, state_data: state_data_give})
+                results[0, 1] = results[0, 1] * 2.0 - 1.0
 
-                # compare_save_3d_to_2d(pcl_arr[0, :, :, :, 0], pcl_arr[0, :, :, :, 0], 0, 1, 4, 12, 1)
-                # concat_vector = sess.run(concat_vector, feed_dict={cube_data: pcl_arr, line_data_1: data2_to_feed,
-                   #                                   line_data_2: data3_to_feed, state_data: state_data_give})
-                # draw_plots(np.arange(0, 576), np.reshape(concat_vector, [576]))
+                move_cmd.linear.x = (results[0, 0] * 0.7 + last_vl) / 2.0
+                move_cmd.angular.z = (results[0, 1] * 0.88 + last_vyaw) / 2.0
 
-                move_cmd.linear.x = results[0, 0] * 0.75
-                # move_cmd.linear.x = 0.0
-                move_cmd.angular.z = results[0, 1] * 1.0
+                last_vl = move_cmd.linear.x
+                last_vyaw = move_cmd.angular.z
 
                 # if move_cmd.linear.x < 0:
                 #     move_cmd.linear.x = 0
 
                 cmd_pub.publish(move_cmd)
 
-                print yaw_forward, yaw_backward, yaw_leftward, yaw_rightward
-                print results
+                # print yaw_forward, yaw_backward, yaw_leftward, yaw_rightward
+                print move_cmd.angular.z
 
                 new_msg_received = False
             rate.sleep()

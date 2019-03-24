@@ -7,7 +7,6 @@ import sys
 import csv
 import time
 import gc
-import file_walker
 import os
 from multiprocessing import Pool
 import multiprocessing
@@ -19,25 +18,25 @@ learning_rate = 1e-4
 epoch_num = 500
 save_every_n_epoch = 50
 training_times_simple_epoch = 2
-if_train_encoder = False
+if_train_encoder = True
 if_continue_train = False
 
-model_save_path = "/home/ubuntu/chg_workspace/3dcnn/model/cnn_rnn/01/model_short_rnn_layers_with_swing/"
+model_save_path = "/home/ubuntu/chg_workspace/3dcnn/model/cnn_rnn/01/model_onefile/"
 image_save_path = "/home/ubuntu/chg_workspace/3dcnn/model/cnn_rnn/01/plot3/"
 
 encoder_model = "/home/ubuntu/chg_workspace/3dcnn/model/auto_encoder/encoder_003/model/simulation_autoencoder_700.ckpt"
-last_model = "/home/ubuntu/chg_workspace/3dcnn/model/cnn_rnn/01/model_short_rnn_layers/simulation_cnn_rnn100.ckpt"
+last_model = "/home/ubuntu/chg_workspace/3dcnn/model/cnn_rnn/01/model2/simulation_cnn_rnn50.ckpt"
 
 ''' Parameters for input vectors'''
 input_paras = {
     "input1_dim_xy": 64,  # point cloud
     "input1_dim_z": 24,  # point cloud
-    "input2_dim": 2,  # states
-    "input3_dim": 4  # commands
+    "input2_dim": 8,  # states
+    "input3_dim": 8  # commands
 }
 
-states_compose_num = [1, 1]  # total:  "input2_dim": 2
-commands_compose_each = 1  # Should be "input3_dim": 4  / 4
+states_compose_num = [3, 3, 1, 1]  # total:  "input2_dim": 8
+commands_compose_each = 2  # Should be "input3_dim": 8  / 4
 
 input_dimension_xy = input_paras["input1_dim_xy"]
 input_dimension_z = input_paras["input1_dim_z"]
@@ -50,7 +49,11 @@ img_height = input_dimension_z
 states_num_one_line = 17
 labels_num_one_line = 4
 
-training_file_path = "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02"
+file_path_states = "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/uav_data_2018_12_16_16:15:00.csv"
+
+file_path_clouds = "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/pcl_data_2018_12_16_16:15:00.csv"
+
+file_path_labels = "/home/ubuntu/chg_workspace/data/new_csvs/new_map/cnn-rnn/hzy_02/label_data_2018_12_16_16:15:00.csv"
 
 ''' Parameters for Computer'''
 gpu_num = 2
@@ -58,17 +61,17 @@ gpu_num = 2
 ''' Parameters for RNN'''
 rnn_paras = {
     "raw_batch_size": 20,
-    "time_step": 5,
+    "time_step": 10,
     "state_len": 16,
-    "input_len": 560,
+    "input_len": 592,
     "output_len": 2
 }
 
 ''' Parameters for concat values'''
 concat_paras = {
     "dim1": 512,  # should be the same as encoder out dim
-    "dim2": 16,
-    "dim3": 32  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
+    "dim2": 32,
+    "dim3": 48  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
 }
 
 ''' Parameters for CNN encoder'''
@@ -323,11 +326,16 @@ def read_threading(filename_pcl, filename_state, filename_label, flags, house):
     read_others(data_labels, filename_label, labels_num_one_line)
 
     ''' Get useful states and labels '''
+    states_input_current_yaw_x = np.concatenate([np.reshape(data_states[:, 10], [img_num, 1])
+                                                 for i in range(states_compose_num[0])], axis=1)  # current yaw x
+    states_input_current_yaw_y = np.concatenate([np.reshape(data_states[:, 11], [img_num, 1])
+                                                 for i in range(states_compose_num[1])], axis=1)  # current yaw y
     states_input_linear_vel = np.concatenate([np.reshape(data_states[:, 2], [img_num, 1])
-                                              for i in range(states_compose_num[0])], axis=1)  # linear vel
+                                              for i in range(states_compose_num[2])], axis=1)  # linear vel
     states_input_angular_vel = np.concatenate([np.reshape(data_states[:, 3], [img_num, 1])
-                                               for i in range(states_compose_num[1])], axis=1)  # angular vel
-    states_input = np.concatenate([states_input_linear_vel, states_input_angular_vel], axis=1)
+                                               for i in range(states_compose_num[3])], axis=1)  # angular vel
+    states_input = np.concatenate([states_input_current_yaw_x, states_input_current_yaw_y,
+                                   states_input_linear_vel, states_input_angular_vel], axis=1)
 
     commands_input_forward = np.concatenate([np.reshape(data_states[:, 13], [img_num, 1])
                                              for i in range(commands_compose_each)], axis=1)  # command: forward
@@ -531,74 +539,67 @@ def tf_training(data_read_flags, data_house, file_num):
                 restorer.restore(sess, encoder_model)
                 print "Partially restored from encoder !!"
 
+            data_mat_pcl = np.array(0)
+            data_mat_state = np.array(0)
+            data_mat_command = np.array(0)
+            data_mat_label = np.array(0)
+            data_num = 0
+
+            # Check flags to find data
+            looking_for_data_flag = True
+            while looking_for_data_flag:
+                time.sleep(0.05)
+                for i_flag in range(len(data_read_flags)):
+                    if data_read_flags[i_flag] == 2:
+                        print "found available data.. "
+                        data_mat_pcl = data_house[i_flag][0]
+                        data_mat_state = data_house[i_flag][1]
+                        data_mat_command = data_house[i_flag][2]
+                        data_mat_label = data_house[i_flag][3]
+                        data_num = data_house[i_flag][3].shape[0]
+                        # data_read_flags[i_flag] = 0
+                        looking_for_data_flag = False
+                        break
+            print "done loading data.."
+
             # start epochs
             for epoch in range(epoch_num):
                 print "epoch: " + str(epoch)
                 t0 = time.time()
 
                 ''' waiting for data '''
-                for file_seq in range(file_num):
-                    # Check flags to find data
-                    looking_for_data_flag = True
 
-                    data_mat_pcl = np.array(0)
-                    data_mat_state = np.array(0)
-                    data_mat_command = np.array(0)
-                    data_mat_label = np.array(0)
-                    data_num = 0
+                batch_num = int((data_num - rnn_paras["time_step"]) / batch_size)
 
-                    while looking_for_data_flag:
-                        time.sleep(0.05)
-                        for i_flag in range(len(data_read_flags)):
-                            if data_read_flags[i_flag] == 2:
-                                print "found available data.. "
-                                data_mat_pcl = data_house[i_flag][0]
-                                data_mat_state = data_house[i_flag][1]
-                                data_mat_command = data_house[i_flag][2]
-                                data_mat_label = data_house[i_flag][3]
-                                data_num = data_house[i_flag][3].shape[0]
-                                data_read_flags[i_flag] = 0
-                                looking_for_data_flag = False
-                                break
-                    print "done loading data.."
+                for training_time_this_file in range(training_times_simple_epoch):
+                    # get a random sequence for this file
+                    sequence = generate_shuffled_array(rnn_paras["time_step"], data_num, shuffle=True)
 
-                    batch_num = int((data_num - rnn_paras["time_step"]) / batch_size)
+                    # start batches
+                    for batch_seq in range(batch_num):
+                        print "batch" + str(batch_seq)
+                        # get data for this batch
+                        start_position = batch_seq * batch_size
+                        end_position = (batch_seq + 1) * batch_size
+                        data_pcl_batch = get_batch_step(sequence[start_position:end_position],
+                                                        rnn_paras["time_step"], data_mat_pcl)
+                        data_state_batch = get_batch_step(sequence[start_position:end_position],
+                                                          rnn_paras["time_step"], data_mat_state)
+                        data_command_batch = get_batch_step(sequence[start_position:end_position],
+                                                            rnn_paras["time_step"], data_mat_command)
+                        label_batch = get_batch(sequence[start_position:end_position], data_mat_label)
 
-                    for training_time_this_file in range(training_times_simple_epoch):
-                        # get a random sequence for this file
-                        sequence = generate_shuffled_array(rnn_paras["time_step"], data_num, shuffle=True)
+                        # label_to_draw = np.reshape(label_batch[:, 0], [batch_size])
+                        # draw_plots(np.arange(0, batch_size), label_to_draw)
 
-                        # start batches
-                        for batch_seq in range(batch_num):
-                            print "batch" + str(batch_seq)
-                            # get data for this batch
-                            start_position = batch_seq * batch_size
-                            end_position = (batch_seq + 1) * batch_size
-                            data_pcl_batch = get_batch_step(sequence[start_position:end_position],
-                                                            rnn_paras["time_step"], data_mat_pcl)
-                            data_state_batch = get_batch_step(sequence[start_position:end_position],
-                                                              rnn_paras["time_step"], data_mat_state)
-                            data_command_batch = get_batch_step(sequence[start_position:end_position],
-                                                                rnn_paras["time_step"], data_mat_command)
-                            label_batch = get_batch(sequence[start_position:end_position], data_mat_label)
+                        # train
+                        sess.run(train_op, feed_dict={cube_data: data_pcl_batch, line_data_1: data_state_batch,
+                                                      line_data_2: data_command_batch, reference: label_batch})
 
-                            # label_to_draw = np.reshape(label_batch[:, 0], [batch_size])
-                            # draw_plots(np.arange(0, batch_size), label_to_draw)
-
-                            # train
-                            sess.run(train_op, feed_dict={cube_data: data_pcl_batch, line_data_1: data_state_batch,
-                                                          line_data_2: data_command_batch, reference: label_batch})
-
-                            del data_pcl_batch
-                            del data_state_batch
-                            del data_command_batch
-                            del label_batch
-
-                    del data_mat_pcl
-                    del data_mat_state
-                    del data_mat_command
-                    del data_mat_label
-                    del data_num
+                        del data_pcl_batch
+                        del data_state_batch
+                        del data_command_batch
+                        del label_batch
 
                 print "Epoch " + str(epoch) + " finished!  Time: " + str(time.time() - t0)
 
@@ -637,26 +638,9 @@ def tf_training(data_read_flags, data_house, file_num):
 
 
 if __name__ == '__main__':
-    ''' Search for training data in the training folder '''
-    scan = file_walker.ScanFile(training_file_path)
-    files = scan.scan_files()
-
-    file_path_clouds = []
-    file_path_states = []
-    file_path_labels = []
-
-    file_type = '.csv'
-    for file in files:
-        if os.path.splitext(file)[1] == file_type:
-            if os.path.splitext(file)[0].split('/')[-1].split('_')[0] == 'pcl':
-                file_path_clouds.append(file)
-                file_path_states.append(file.replace('pcl', 'uav'))
-                file_path_labels.append(file.replace('pcl', 'label'))
-
-    print "Found " + str(len(file_path_clouds)) + " files to train!!!"
 
     '''Multiple thread'''
-    pool = Pool(processes=5)
+    pool = Pool(processes=2)
 
     data_read_flags = multiprocessing.Manager().list([0, 0, 0, 0])
     data_house = multiprocessing.Manager().list([0, 0, 0, 0])
@@ -665,18 +649,13 @@ if __name__ == '__main__':
     files_num = len(file_path_clouds)
     pool.apply_async(tf_training, args=(data_read_flags, data_house, files_num))
 
-    # Data Reading Thread
-    for i_epoch in range(epoch_num):
-        random_seq = generate_shuffled_array(0, files_num, shuffle=True)
+    # pool.apply_async(test)
+    filename_pcl_this = file_path_clouds
+    filename_states_this = file_path_states
+    filename_labels_this = file_path_labels
 
-        for i_pool in range(files_num):
-            # pool.apply_async(test)
-            filename_pcl_this = file_path_clouds[random_seq[i_pool]]
-            filename_states_this = file_path_states[random_seq[i_pool]]
-            filename_labels_this = file_path_labels[random_seq[i_pool]]
-            pool.apply_async(read_threading, args=(filename_pcl_this, filename_states_this, filename_labels_this,
+    pool.apply_async(read_threading, args=(filename_pcl_this, filename_states_this, filename_labels_this,
                                                    data_read_flags, data_house))
-    print "Created " + str(epoch_num * files_num + 1) + " threads"
 
     pool.close()
     pool.join()

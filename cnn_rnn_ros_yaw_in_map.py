@@ -389,7 +389,7 @@ if __name__ == '__main__':
 
                 move_cmd.linear.x = results[0, 0] * 0.7 #1.0
                 # # move_cmd.linear.x = 0.0
-                move_cmd.angular.z = results[0, 1] * 0.88 #0.88
+                move_cmd.angular.z = (2 * results[0, 1] - 1) * 0.88 #0.88
 
                 # if move_cmd.linear.x < 0:
                 #     move_cmd.linear.x = 0

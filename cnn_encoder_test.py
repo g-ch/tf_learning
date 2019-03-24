@@ -14,12 +14,14 @@ import os
 input_dimension_xy = 64
 input_dimension_z = 24
 
-model_restore_path="/home/ubuntu/chg_workspace/3dcnn_yaw_in_map/model/encoder/02/model/simulation_autoencoder_700.ckpt"
-image_save_path = "/home/ubuntu/chg_workspace/3dcnn_yaw_in_map/model/encoder/02/plots/test/"
+model_restore_path = "/home/ubuntu/chg_workspace/3dcnn/model/auto_encoder/encoder_003/model/simulation_autoencoder_700.ckpt"
+image_save_path = "/home/ubuntu/chg_workspace/3dcnn/model/auto_encoder/encoder_003/test_plots/"
 
-file_path_list_pcl = [
-    "/home/ubuntu/chg_workspace/data/yaw_in_map/test/pcl_data_2018_12_28_11:25:33_chg_abnormal.csv"
-]
+path = "/home/ubuntu/chg_workspace/data/new_csvs/new_map/encoder/test"
+clouds_filename = ["pcl_data_2018_12_15_12:01:34.csv"
+                   ]
+
+file_path_list_pcl = [os.path.join(path, cloud) for cloud in clouds_filename]
 
 img_wid = input_dimension_xy
 img_height = input_dimension_z
@@ -323,17 +325,6 @@ def tf_testing(data_read_flags, data_house, file_num):
                 # get data for this batch
                 this_data = np.reshape(data_mat[seq, :], [1, input_dimension_xy, input_dimension_xy, input_dimension_z, 1])
                 decode_pcl = sess.run(decode_result, feed_dict={x_: this_data})
-
-                print "decode_pcl ", decode_pcl.shape[0]
-
-                for i in range(decode_pcl.shape[1]):
-                    for j in range(decode_pcl.shape[2]):
-                        for k in range(decode_pcl.shape[3]):
-                            if 0.005 < decode_pcl[0,i,j,k,0] < 0.05:
-                                # print "found free space"
-                                decode_pcl[0, i, j, k, 0] = 0.14
-
-                print "image_save_path ", image_save_path
 
                 save_name = image_save_path + str(img_counter) + ".png"
                 compare_img_save_3d_to_2d(this_data[0, :, :, :, 0], decode_pcl[0, :, :, :, 0], 0, 1, 4, 12, 1, save_name)

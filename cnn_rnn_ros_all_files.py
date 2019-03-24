@@ -11,10 +11,11 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import sys
 
+
 states_compose_num = [3, 3, 1, 1]  # total:  "input2_dim": 8
 commands_compose_each = 2  # Should be "input3_dim": 8  / 4
 
-model_path = "/home/ubuntu/chg_workspace/3dcnn/model/cnn_rnn/01/model_short_rnn_layers_with_swing/simulation_cnn_rnn250.ckpt"
+model_path = "/home/ubuntu/chg_workspace/3dcnn/model/cnn_rnn/01/model3/simulation_cnn_rnn100.ckpt"
 
 ''' Parameters for input vectors'''
 input_paras = {
@@ -32,8 +33,8 @@ img_height_downlimit = 4
 
 ''' Parameters for RNN'''
 rnn_paras = {
-    "state_len": 16,
-    "input_len": 592,
+    "state_len": 128,
+    "input_len": 576,
     "output_len": 2
 }
 
@@ -41,7 +42,7 @@ rnn_paras = {
 concat_paras = {
     "dim1": 512,  # should be the same as encoder out dim
     "dim2": 32,
-    "dim3": 48  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
+    "dim3": 32  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
 }
 
 ''' Parameters for CNN encoder'''
@@ -163,13 +164,8 @@ class Networkerror(RuntimeError):
 
 def refillPclArr(arr, point_x, point_y, point_z, intensity, odom_x, odom_y, odom_z):
     resolu = 0.2
-    yaw = yaw_current
-    x_origin = point_x - odom_x
-    y_origin = point_y - odom_y
-    x_rotated, y_rotated = rotate(x_origin, y_origin, yaw)
-
-    x_tmp = int(x_rotated / resolu + 0.5)
-    y_tmp = int(y_rotated / resolu + 0.5)
+    x_tmp = int((point_x - odom_x) / resolu + 0.5)
+    y_tmp = int((point_y - odom_y) / resolu + 0.5)
     z_tmp = int((point_z - odom_z) / resolu + 0.5)
 
     if abs(x_tmp) < img_wid/2 and abs(y_tmp) < img_wid/2 and z_tmp < img_height_uplimit and z_tmp > -img_height_downlimit:
@@ -181,20 +177,12 @@ def refillPclArr(arr, point_x, point_y, point_z, intensity, odom_x, odom_y, odom
     return arr
 
 
-def rotate(x_origin, y_origin, yaw_angle):
-    x_rotated = x_origin * np.cos(yaw_angle) + y_origin * np.sin(yaw_angle)
-    y_rotated = y_origin * np.cos(yaw_angle) - x_origin * np.sin(yaw_angle)
-    return x_rotated, y_rotated
-
-
 def callBackPCL(point):
     global pcl_arr
     # unknown: zeros
     pcl_arr = np.zeros(dtype=np.float32, shape=[1, img_wid, img_wid, img_height, 1])
     for p in pc2.read_points(point, field_names=("x", "y", "z", "intensity"), skip_nans=True):
-        if p[3] > 1.0:
-            p[3] = p[3] * 10
-        pcl_arr = refillPclArr(pcl_arr, p[0], p[1], p[2], p[3]/70.0, position_odom_x, position_odom_y, position_odom_z)
+        pcl_arr = refillPclArr(pcl_arr, p[0], p[1], p[2], p[3]/7.0, position_odom_x, position_odom_y, position_odom_z)
     global new_msg_received
     new_msg_received = True
 
@@ -368,7 +356,6 @@ if __name__ == '__main__':
 
         print "parameters restored!"
 
-        global new_msg_received
         while not rospy.is_shutdown():
             if new_msg_received:
                 # data2_to_feed = np.ones([1, compose_num[0]]) * yaw_delt
@@ -396,9 +383,9 @@ if __name__ == '__main__':
                    #                                   line_data_2: data3_to_feed, state_data: state_data_give})
                 # draw_plots(np.arange(0, 576), np.reshape(concat_vector, [576]))
 
-                move_cmd.linear.x = results[0, 0] * 0.75
+                move_cmd.linear.x = results[0, 0] * 0.5
                 # move_cmd.linear.x = 0.0
-                move_cmd.angular.z = results[0, 1] * 1.0
+                move_cmd.angular.z = -results[0, 1]
 
                 # if move_cmd.linear.x < 0:
                 #     move_cmd.linear.x = 0

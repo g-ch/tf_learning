@@ -20,78 +20,21 @@ total_epoches = 1000
 save_every_n_epoch = 100
 times_per_file = 1
 
-model_save_path = "/home/ubuntu/chg_workspace/3dcnn_yaw_in_map/model/encoder/02/model/"
-image_save_path = "/home/ubuntu/chg_workspace/3dcnn_yaw_in_map/model/encoder/02/plots/"
+model_save_path = "/home/ubuntu/chg_workspace/3dcnn/model/auto_encoder/encoder_003/model/"
+image_save_path = "/home/ubuntu/chg_workspace/3dcnn/model/auto_encoder/encoder_003/plots/"
 
-# path = "/home/ubuntu/chg_workspace/data/yaw_in_map/encoder"
-# clouds_filename = ["pcl_data_2018_12_26_16:12:17.csv",
-#                    "pcl_data_2018_12_26_16:07:27.csv",
-#                    "pcl_data_2018_12_26_16:05:34.csv",
-#                    "pcl_data_2018_12_26_16:00:56.csv"
-#                    ]
-#
-# file_path_list_pcl = [os.path.join(path, cloud) for cloud in clouds_filename]
+path = "/home/ubuntu/chg_workspace/data/new_csvs/new_map/encoder/training"
+clouds_filename = ["pcl_data_2018_12_15_10:51:54.csv",
+                   "pcl_data_2018_12_15_10:59:07.csv",
+                   "pcl_data_2018_12_15_11:33:52.csv",
+                   "pcl_data_2018_12_15_11:37:17.csv",
+                   "pcl_data_2018_12_15_11:40:32.csv",
+                   "pcl_data_2018_12_15_11:47:35.csv",
+                   "pcl_data_2018_12_15_11:51:31.csv",
+                   "pcl_data_2018_12_15_11:56:45.csv"
+                   ]
 
-
-
-
-file_path_list_pcl = ["/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_17:14:40.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_17:13:39.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_17:13:08.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_17:12:28.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_17:10:57.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_17:09:32.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_17:07:09.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:56:50.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:54:52.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:54:20.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:53:31.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:52:19.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:51:43.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:51:06.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:49:10.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:48:43.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:47:56.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:47:20.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:45:41.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:45:08.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:44:35.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:43:49.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:43:17.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:42:28.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:41:34.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:40:51.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg01/pcl_data_2018_12_26_16:39:49.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg02/pcl_data_2018_12_28_11:18:52.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg02/pcl_data_2018_12_28_11:19:34.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg02/pcl_data_2018_12_28_11:17:53.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg02/pcl_data_2018_12_28_11:17:04.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg02/pcl_data_2018_12_28_11:16:29.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg02/pcl_data_2018_12_28_11:15:51.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg02/pcl_data_2018_12_28_11:15:07.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg02/pcl_data_2018_12_28_11:10:35.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg02/pcl_data_2018_12_28_11:09:02.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg02/pcl_data_2018_12_28_11:07:03.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg02/pcl_data_2018_12_28_11:05:09.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/chg02/pcl_data_2018_12_28_11:03:37.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy01/pcl_data_2018_12_26_16:27:40.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy01/pcl_data_2018_12_26_16:25:51.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy01/pcl_data_2018_12_26_16:24:05.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy01/pcl_data_2018_12_26_16:21:51.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy02/pcl_data_2018_12_28_10:57:13.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy02/pcl_data_2018_12_28_10:55:10.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy02/pcl_data_2018_12_28_10:53:33.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy02/pcl_data_2018_12_28_10:51:46.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy02/pcl_data_2018_12_28_10:50:24.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy02/pcl_data_2018_12_28_10:48:41.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy02/pcl_data_2018_12_28_10:47:41.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy02/pcl_data_2018_12_28_10:45:32.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy02/pcl_data_2018_12_28_10:43:29.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy02/pcl_data_2018_12_28_10:40:36.csv",
-                      "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train/hzy02/pcl_data_2018_12_28_10:38:03.csv"
-                      ]
-
-
+file_path_list_pcl = [os.path.join(path, cloud) for cloud in clouds_filename]
 
 img_wid = input_dimension_xy
 img_height = input_dimension_z
