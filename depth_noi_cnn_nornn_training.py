@@ -16,12 +16,11 @@ thres_gaussian = 0.5
 thres_pepper = 0.2
 
 
-
 ''' Parameters for training '''
 ''' Batch size defined in Parameters for RNN '''
 learning_rate = 1e-4
 regularization_para = 1e-7  # might have problem in rgb training, too many parameters
-epoch_num = 500
+epoch_num = 501
 save_every_n_epoch = 50
 training_times_simple_epoch = 2
 if_train_encoder = True
@@ -57,8 +56,8 @@ img_channel = input_channel
 states_num_one_line = 17
 labels_num_one_line = 4
 
-# training_file_path = "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train"
-training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_deepth_img/deepth_rgb_seemantics/gazebo_rate_092/yhz/short/09"
+# training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_deepth_img/deepth_rgb_semantics_depnoi/short/84"
+training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_deepth_img/deepth_rgb_semantics_depnoi"
 
 ''' Parameters for Computer'''
 gpu_num = 2
@@ -232,7 +231,7 @@ def get_batch(seq, data):
     return result
 
 
-def read_threading(filename_img, filename_state, filename_label, file_seq, data_house):
+def read_threading(filename_img, filename_dep_noi, filename_state, filename_label, file_seq, data_house):
     """
     Read data thread function.
     :param filename_pcl:  pcl filename
@@ -243,47 +242,54 @@ def read_threading(filename_img, filename_state, filename_label, file_seq, data_
     :return:
     """
     print "Start reading..."
-    ''' Read pcl data first '''
-    clouds = open(filename_img, "r")
-    img_num = len(clouds.readlines())
-    clouds.close()
-    data_img = np.zeros([img_num, img_height, img_wid, img_channel])
-    read_img_threading(data_img, filename_img)
-    print "rgb data get! img_num = " + str(img_num)
+    depth = open(filename_img, "r")
+    img_num = len(depth.readlines())
+    depth.close()
+    if img_num == 0:
+        pass
+    else:
+        data_img = np.zeros([img_num, img_height, img_wid, img_channel])
+        read_img_threading(data_img, filename_img)
 
-    # Just to make sure the data is read correctly
-    # compare_draw_3d_to_2d(data_pcl[10, :, :, :, 0], data_pcl[10, :, :, :, 0], 0, 1, 2, 12, 1)
+        data_img_noi = np.zeros([img_num, img_height, img_wid, img_channel])
+        read_img_threading(data_img_noi, filename_dep_noi)
 
-    ''' Read state data '''
-    data_states = np.zeros([img_num, states_num_one_line])
-    # print "state name", filename_state
-    read_others(data_states, filename_state, states_num_one_line)
-    # print "state data get!"
+        name_to_print = os.path.splitext(filename_img)[0].split('/')[-1]
+        print "depth data " + str(name_to_print) + " get! img_num = " + str(img_num)
 
-    ''' Read label data '''
-    data_labels = np.zeros([img_num, labels_num_one_line])
-    read_others(data_labels, filename_label, labels_num_one_line)
-    # print "label data get!"
+        # Just to make sure the data is read correctly
+        # compare_draw_3d_to_2d(data_pcl[10, :, :, :, 0], data_pcl[10, :, :, :, 0], 0, 1, 2, 12, 1)
 
-    ''' Get useful states and labels '''
-    commands_input_forward = np.concatenate([np.reshape(data_states[:, 13], [img_num, 1])
-                                             for i in range(commands_compose_each)], axis=1)  # command: forward
-    commands_input_backward = np.concatenate([np.reshape(data_states[:, 14], [img_num, 1])
-                                              for i in range(commands_compose_each)], axis=1)  # command: backward
-    commands_input_left = np.concatenate([np.reshape(data_states[:, 15], [img_num, 1])
-                                          for i in range(commands_compose_each)], axis=1)  # command: left
-    commands_input_right = np.concatenate([np.reshape(data_states[:, 16], [img_num, 1])
-                                           for i in range(commands_compose_each)], axis=1)  # command: right
-    commands_input = np.concatenate([commands_input_forward, commands_input_backward,
-                                     commands_input_left, commands_input_right], axis=1)
+        ''' Read state data '''
+        data_states = np.zeros([img_num, states_num_one_line])
+        # print "state name", filename_state
+        read_others(data_states, filename_state, states_num_one_line)
+        # print "state data get!"
 
-    labels_ref = data_labels[:, 0:2]  # vel_cmd ref, angular_cmd ref
-    # print labels_ref
-    labels_ref[:, 1] = (0.8 * labels_ref[:, 1] + np.ones(img_num)) / 2.0  # !!!!!
-    # print labels_ref
+        ''' Read label data '''
+        data_labels = np.zeros([img_num, labels_num_one_line])
+        read_others(data_labels, filename_label, labels_num_one_line)
+        # print "label data get!"
 
-    ''' Store data to house '''
-    data_house[file_seq] = [data_img, commands_input, labels_ref]
+        ''' Get useful states and labels '''
+        commands_input_forward = np.concatenate([np.reshape(data_states[:, 13], [img_num, 1])
+                                                 for i in range(commands_compose_each)], axis=1)  # command: forward
+        commands_input_backward = np.concatenate([np.reshape(data_states[:, 14], [img_num, 1])
+                                                  for i in range(commands_compose_each)], axis=1)  # command: backward
+        commands_input_left = np.concatenate([np.reshape(data_states[:, 15], [img_num, 1])
+                                              for i in range(commands_compose_each)], axis=1)  # command: left
+        commands_input_right = np.concatenate([np.reshape(data_states[:, 16], [img_num, 1])
+                                               for i in range(commands_compose_each)], axis=1)  # command: right
+        commands_input = np.concatenate([commands_input_forward, commands_input_backward,
+                                         commands_input_left, commands_input_right], axis=1)
+
+        labels_ref = data_labels[:, 0:2]  # vel_cmd ref, angular_cmd ref
+        # print labels_ref
+        labels_ref[:, 1] = (0.8 * labels_ref[:, 1] + np.ones(img_num)) / 2.0  # !!!!!
+        # print labels_ref
+
+        ''' Store data to house '''
+        data_house[file_seq] = [data_img, data_img_noi, commands_input, labels_ref]
 
 
 def read_img_threading(data_img, filename_img):
@@ -331,79 +337,6 @@ def read_others(data, filename, num_one_line):
         except OverflowError:
             maxInt = int(maxInt / 10)
             decrement = True
-
-
-def ContourGaussianNoise(src, rgb_image_uint8, contour_width):
-    image_mm = src
-    # parameters for the gaussian noise at the contour
-    theta_mean = 3.1415926 / 6
-    sigma_z_mm = 1.5 - 0.5 * image_mm + 0.3 * image_mm * image_mm \
-                 + 0.1 * np.power(image_mm, 1.5) * theta_mean * theta_mean \
-                 / (3.1415 - theta_mean) * (3.1415 - theta_mean)
-
-    randoms_normal = np.random.randn(image_mm.shape[0], image_mm.shape[1], 1)
-
-    noise_z_mm = randoms_normal * sigma_z_mm + image_mm
-    noise_z_m_uint8 = np.trunc(noise_z_mm * 0.001 * 40).astype(np.uint8)
-
-    # find contours
-    contours = cv2.Canny(rgb_image_uint8[0, :, :, :], 50, 500)
-
-    _, contours_bin, hierarchy = cv2.findContours(contours, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    # contours = cv2.findContours(rgb_image_uint[0, :, :, :])
-
-    cv2.drawContours(contours, contours_bin, -1, 255, 8)
-
-    # the contours with noise
-    contour_wider_uint8 = cv2.bitwise_and(noise_z_m_uint8, contours)
-
-    # contour_wider_noise = contour_wider_uint8 * noise_z_mm
-    # contour_wider_noise = np.trunc(contour_wider_noise * 0.001 * 40).astype(np.uint8)
-
-    contour_not = cv2.bitwise_not(contour_wider_uint8)
-
-    image_without_contour = cv2.bitwise_and(contour_not, rgb_image_uint8[0, :, :, :])
-
-    image_with_contour_noise = image_without_contour + contour_wider_uint8
-
-    return image_with_contour_noise
-
-
-def SaltAndPepper(src, percetage):
-    SP_NoiseNum = int(percetage * src.shape[0] * src.shape[1])
-    for i in range(SP_NoiseNum):
-        randX = np.random.normal(loc=0.0, scale=img_height/24, size=None)
-        randY = np.random.normal(loc=0.0, scale=img_wid/24, size=None)
-
-        randX = np.maximum(randX, - img_height / 2)
-        randX = np.minimum(randX, img_height / 2)
-
-        randY = np.maximum(randY, - img_wid / 2)
-        randY = np.minimum(randY, img_wid / 2)
-
-        margin_y = np.random.randint(0, int(img_wid))
-        margin_x = np.random.randint(0, int(img_height))
-
-        if randX <= 0:
-            randX = img_height + randX
-        if randY <= 0:
-            randY = img_wid + randY
-        randX = int(randX)
-        randY = int(randY)
-
-        if np.random.random_integers(0, 1) == 0:
-            src[randX, margin_y] = 0
-
-        # if np.random.random_integers(0, 1) == 0:
-        #     src[randX, margin_y] = 0
-
-        if np.random.random_integers(0, 1) == 0:
-            src[margin_x, randY] = 0
-
-        # if np.random.random_integers(0, 1) == 0:
-        #     src[margin_x, randY] = 0
-
-    return src
 
 
 def tf_training(data_house, file_num):
@@ -547,9 +480,10 @@ def tf_training(data_house, file_num):
                 for file_seq in range(file_num):
                     read_seq = seq_array[file_seq]
 
-                    data_mat_pcl = data_house[read_seq][0]
-                    data_mat_command = data_house[read_seq][1]
-                    data_mat_label = data_house[read_seq][2]
+                    noi_seq = np.random.random_integers(0, 1)  # 0 no noise, 1 with noise
+                    data_mat_pcl = data_house[read_seq][noi_seq]
+                    data_mat_command = data_house[read_seq][2]
+                    data_mat_label = data_house[read_seq][3]
                     data_num = data_mat_pcl.shape[0]
 
                     batch_num = int(data_num / batch_size)
@@ -560,12 +494,11 @@ def tf_training(data_house, file_num):
 
                         # start batches
                         for batch_seq in range(batch_num):
-                            print "batch" + str(batch_seq)
+                            # print "batch" + str(batch_seq)
                             # get data for this batch
                             start_position = batch_seq * batch_size
                             end_position = (batch_seq + 1) * batch_size
                             data_pcl_batch = get_batch(sequence[start_position:end_position], data_mat_pcl)
-
                             data_command_batch = get_batch(sequence[start_position:end_position], data_mat_command)
                             label_batch = get_batch(sequence[start_position:end_position], data_mat_label)
 
@@ -598,6 +531,7 @@ if __name__ == '__main__':
     files = scan.scan_files()
 
     file_path_depth = []
+    file_path_dep_noi = []
     file_path_states = []
     file_path_labels = []
 
@@ -608,6 +542,8 @@ if __name__ == '__main__':
                 file_path_depth.append(file)
                 file_path_states.append(file.replace('depth', 'uav'))
                 file_path_labels.append(file.replace('depth', 'label'))
+                # file_path_dep_noi.append(file.replace('depth', 'dep_noi'))
+                file_path_dep_noi.append(file.replace('depth_data', 'dep_noi'))
 
     print "Found " + str(len(file_path_depth)) + " files to train!!!"
 
@@ -620,8 +556,9 @@ if __name__ == '__main__':
         filename_depth_this = file_path_depth[seq]
         filename_states_this = file_path_states[seq]
         filename_labels_this = file_path_labels[seq]
+        filename_dep_noi_this = file_path_dep_noi[seq]
 
-        read_threading(filename_depth_this, filename_states_this, filename_labels_this, seq, data_house)
+        read_threading(filename_depth_this, filename_dep_noi_this, filename_states_this, filename_labels_this, seq, data_house)
 
     tf_training(data_house, files_num)
 

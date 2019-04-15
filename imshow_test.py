@@ -4,9 +4,13 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import sys
 import csv
+import cv2
 
-img_wid = 64
-img_height = 24
+# img_wid = 64
+# img_height = 24
+
+img_wid = 256
+img_height = 192
 
 
 # draw by axis z direction
@@ -48,29 +52,55 @@ def compare_save_3d_to_2d(data1, data2, min_val, max_val, rows, cols, step, name
     plt.close()
 
 
-def read_pcl(data, filename):
+def read_img_threading(data_img, filename_img):
     maxInt = sys.maxsize
     decrement = True
+
     while decrement:
         # decrease the maxInt value by factor 10
         # as long as the OverflowError occurs.
         decrement = False
         try:
+            # print "begin read img data..", "filename_img=", filename_img
             csv.field_size_limit(maxInt)
-            with open(filename, mode='r') as csvfile:
+
+            with open(filename_img, mode='r') as csvfile:
                 csv_reader = csv.reader(csvfile, delimiter=',', quotechar='|')
                 i_row = 0
                 for row in csv_reader:
-                    for i in range(img_wid):
+                    for i in range(img_height):
                         for j in range(img_wid):
-                            for k in range(img_height):
-                                data[i_row, i, j, k, 0] = row[i * img_wid * img_height + j * img_height + k]
+                            data_img[i_row, i, j, :] = row[i * img_wid + j]
                     i_row = i_row + 1
+
         except OverflowError:
             maxInt = int(maxInt / 10)
             decrement = True
 
-    return data
+
+# def read_pcl(data, filename):
+#     maxInt = sys.maxsize
+#     decrement = True
+#     while decrement:
+#         # decrease the maxInt value by factor 10
+#         # as long as the OverflowError occurs.
+#         decrement = False
+#         try:
+#             csv.field_size_limit(maxInt)
+#             with open(filename, mode='r') as csvfile:
+#                 csv_reader = csv.reader(csvfile, delimiter=',', quotechar='|')
+#                 i_row = 0
+#                 for row in csv_reader:
+#                     for i in range(img_wid):
+#                         for j in range(img_wid):
+#                             for k in range(img_height):
+#                                 data[i_row, i, j, k, 0] = row[i * img_wid * img_height + j * img_height + k]
+#                     i_row = i_row + 1
+#         except OverflowError:
+#             maxInt = int(maxInt / 10)
+#             decrement = True
+#
+#     return data
 
 
 def draw_plots(x, y):
@@ -101,18 +131,34 @@ if __name__ == "__main__":
     # print data_mat[2,:,:,:,0]
 
     # file_name = "/home/ubuntu/chg_workspace/data/new_csvs/backward_unable/chg_route1_trial1/pcl_data_2018_12_12_14:03:47.csv"
-    file_name = "/home/ubuntu/catkin_ws/src/hybrid_local_map/uavInfo/src/testdata/pcl_data_2018_12_24_19:06:20.csv"
-    clouds = open(file_name, "r")
-    img_num = len(clouds.readlines())
-    clouds.close()
-    data_mat = np.ones([img_num, img_wid, img_wid, img_height, 1])
-    data_mat = read_pcl(data_mat, file_name)
+    file_name = "/home/ubuntu/catkin_ws/dep_noi2019_04_12_23:04:03.csv"
 
-    print "data_mat", data_mat
+    depth = open(file_name, "r")
+    img_num = len(depth.readlines())
+    depth.close()
 
-    path = '/home/ubuntu/chg_workspace/data/plots/input_pcl_test/'
-    for i in range(180):
-        name = path + str(i) + '.png'
-        compare_save_3d_to_2d(data_mat[i, :, :, :, 0], data_mat[i, :, :, :, 0], 0, 1, 4, 12, 1, name)
+    img_channel = 1
+    img_height_depth = 192
+    img_wid_depth = 256
+    data_img = np.zeros([img_num, img_height_depth, img_wid_depth, img_channel], dtype=np.uint8)
 
-    draw_plots(np.arange(0, 576), np.arange(0, 576))
+    read_img_threading(data_img, file_name)
+
+    for i in range(img_num):
+        cv2.imshow("image read", data_img[i, :, :, :])
+        cv2.waitKey(5)
+
+    # clouds = open(file_name, "r")
+    # img_num = len(clouds.readlines())
+    # clouds.close()
+    # data_mat = np.ones([img_num, img_wid, img_wid, img_height, 1])
+    # data_mat = read_pcl(data_mat, file_name)
+    #
+    # print "data_mat", data_mat
+    #
+    # path = '/home/ubuntu/chg_workspace/data/plots/input_pcl_test/'
+    # for i in range(180):
+    #     name = path + str(i) + '.png'
+    #     compare_save_3d_to_2d(data_mat[i, :, :, :, 0], data_mat[i, :, :, :, 0], 0, 1, 4, 12, 1, name)
+    #
+    # draw_plots(np.arange(0, 576), np.arange(0, 576))

@@ -12,13 +12,16 @@ import matplotlib.pyplot as plt
 import cv2
 import time
 import csv
+import random
+from scipy.ndimage.filters import maximum_filter
 
 fileobj = open('test_depth.csv', 'wb')
 file_writer = csv.writer(fileobj)
 
 commands_compose_each = 1  # Should be "input3_dim": 8  / 4
 
-model_path = "/home/ubuntu/chg_workspace/depth/model/cnn_nornn/01/model/simulation_cnn_rnn200.ckpt"
+# model_path = "/home/ubuntu/chg_workspace/depth/model/cnn_nornn/01/model/simulation_cnn_rnn200.ckpt"
+model_path = "/home/ubuntu/chg_workspace/depth/model/cnn_nornn/01_noi/model/simulation_cnn_rnn400.ckpt"
 
 ''' Parameters for input vectors'''
 input_paras = {
@@ -91,6 +94,11 @@ yaw_rightward = 0.0
 
 rgb_image = np.zeros([1, img_height, img_wid, img_channel])  # bgr in opencv form
 bridge = CvBridge()
+
+
+'''threshold for deciding if adding noise to the images'''
+thres_gaussian = 0.5
+thres_pepper = 0.2
 
 
 def conv2d_relu(x, kernel_shape, bias_shape, strides):
@@ -176,25 +184,40 @@ def callBackDepth(img):
 
     global rgb_image, new_msg_received
 
-    rgb_image_list = cv2.resize(cv_image, (img_wid, img_height), interpolation=cv2.INTER_AREA)
+    image_mm = cv2.resize(cv_image, (img_wid, img_height), interpolation=cv2.INTER_AREA)
 
-    rgb_image_list = rgb_image_list #* 0.001  # mm -> m
+    rgb_image_list = image_mm * 0.001  # mm -> m
 
-    # cv2.imshow("rgb", rgb_image_list)
-    # cv2.waitKey(5)
     rgb_image_list[rgb_image_list > 6.3] = 6.3
     rgb_image_list[np.isnan(rgb_image_list)] = 6.3
-    rgb_image_list = rgb_image_list * 40
 
-    rgb_image_trunc = np.trunc(rgb_image_list).astype(np.uint8)
+    image_mm = rgb_image_list * 1000
 
-    rgb_image = np.array(rgb_image_trunc).reshape(1, img_height, img_wid, img_channel)
+    rgb_image_uint = np.trunc(image_mm * 40).astype(np.uint8)
+    # rgb_image_uint = np.array(rgb_image_uint).reshape(1, img_height, img_wid, img_channel)
 
-    cv2.imshow("depth", rgb_image[0, :, :, :])
-    cv2.waitKey(5)
+    rgb_image = np.array(rgb_image_uint).reshape(1, img_height, img_wid, img_channel)
 
-    line_to_save_as_csv = np.zeros([img_height * img_wid, 1])
-    mat_to_save = np.zeros([img_height * img_wid, 1])
+    # gaussian random noise generation: add to the origin image with the unit of mm
+    # sigma_l_mm = np.ones(image_mm.shape) * 3.1
+
+    # image_with_contour_noise = rgb_image_uint[0, :, :, :]
+    #
+    # cv2.imshow("img_origin_unit8", rgb_image_uint[0, :, :, :])
+    # cv2.waitKey(5)
+    #
+    # if np.random.random_sample() < thres_gaussian:
+    #     image_with_contour_noise = ContourGaussianNoise(image_mm, rgb_image_uint, contour_width=5)
+    #
+    # if np.random.random_sample() < thres_pepper:
+    #     pepper_percentage = np.random.random_sample() / 2
+    #     SaltAndPepper(image_with_contour_noise, pepper_percentage)
+    #
+    # cv2.imshow("depth contour", image_with_contour_noise)
+    # cv2.waitKey(5)
+
+    # line_to_save_as_csv = np.zeros([img_height * img_wid, 1])
+    # mat_to_save = np.zeros([img_height * img_wid, 1])
     # for i in range(img_height):
     #     for j in range(img_wid):
     #         line_to_save_as_csv[i * img_wid + j, 0] = rgb_image[0, i, j, 0]
@@ -206,6 +229,96 @@ def callBackDepth(img):
     # cv2.imshow("depth", rgb_image)
     # cv2.waitKey(5)
     new_msg_received = True
+
+
+def ContourGaussianNoise(src, rgb_image_uint8, contour_width):
+    image_mm = src
+    # parameters for the gaussian noise at the contour
+    theta_mean = 3.1415926 / 6
+    sigma_z_mm = 1.5 - 0.5 * image_mm + 0.3 * image_mm * image_mm \
+                 + 0.1 * np.power(image_mm, 1.5) * theta_mean * theta_mean \
+                 / (3.1415 - theta_mean) * (3.1415 - theta_mean)
+
+    randoms_normal = np.random.randn(image_mm.shape[0], image_mm.shape[1])
+
+    noise_z_mm = randoms_normal * sigma_z_mm + image_mm
+    noise_z_m_uint8 = np.trunc(noise_z_mm * 0.001 * 40).astype(np.uint8)
+
+    # noise_z_mm = np.exp(-randoms / (2 * sigma_z_mm * sigma_z_mm))
+
+    # reshape the image in the unit mm
+    # image_mm = np.array(image_mm).reshape(1, img_height, img_wid, img_channel)
+
+    # find contours
+    contours = cv2.Canny(rgb_image_uint8[0, :, :, :], 50, 500)
+
+    _, contours_bin, hierarchy = cv2.findContours(contours, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    # contours = cv2.findContours(rgb_image_uint[0, :, :, :])
+
+    cv2.drawContours(contours, contours_bin, -1, 255, 8)
+
+    # the contours with noise
+    contour_wider_uint8 = cv2.bitwise_and(noise_z_m_uint8, contours)
+
+    # contour_wider_noise = contour_wider_uint8 * noise_z_mm
+    # contour_wider_noise = np.trunc(contour_wider_noise * 0.001 * 40).astype(np.uint8)
+
+    contour_not = cv2.bitwise_not(contour_wider_uint8)
+
+    image_without_contour = cv2.bitwise_and(contour_not, rgb_image_uint8[0, :, :, 0])
+
+    image_with_contour_noise = image_without_contour + contour_wider_uint8
+
+    return image_with_contour_noise
+
+
+# def SaltAndPepper(src, percetage):
+#     SP_NoiseNum = int(percetage * src.shape[0] * src.shape[1])
+#     for i in range(SP_NoiseNum):
+#         randX = random.randint(0, src.shape[0]-1)
+#         randY = random.randint(0, src.shape[1]-1)
+#         if np.random.random_integers(0, 1) == 0:
+#             src[randX, randY] = 0
+#         else:
+#             src[randX, randY] = 255
+#     return src
+
+
+def SaltAndPepper(src, percetage):
+    SP_NoiseNum = int(percetage * src.shape[0] * src.shape[1])
+    for i in range(SP_NoiseNum):
+        randX = np.random.normal(loc=0.0, scale=img_height/24, size=None)
+        randY = np.random.normal(loc=0.0, scale=img_wid/24, size=None)
+
+        randX = np.maximum(randX, - img_height / 2)
+        randX = np.minimum(randX, img_height / 2)
+
+        randY = np.maximum(randY, - img_wid / 2)
+        randY = np.minimum(randY, img_wid / 2)
+
+        margin_y = np.random.randint(0, int(img_wid))
+        margin_x = np.random.randint(0, int(img_height))
+
+        if randX <= 0:
+            randX = img_height + randX
+        if randY <= 0:
+            randY = img_wid + randY
+        randX = int(randX)
+        randY = int(randY)
+
+        if np.random.random_integers(0, 1) == 0:
+            src[randX, margin_y] = 0
+
+        # if np.random.random_integers(0, 1) == 0:
+        #     src[randX, margin_y] = 0
+
+        if np.random.random_integers(0, 1) == 0:
+            src[margin_x, randY] = 0
+
+        # if np.random.random_integers(0, 1) == 0:
+        #     src[margin_x, randY] = 0
+
+    return src
 
 
 def callBackDeltYaw(data):
