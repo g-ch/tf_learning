@@ -9,9 +9,8 @@ import time
 import gc
 import file_walker
 import os
-import cv2
-from multiprocessing import Pool
-import multiprocessing
+import threading
+
 thres_gaussian = 0.5
 thres_pepper = 0.2
 
@@ -50,17 +49,30 @@ img_wid = input_dimension_x
 img_height = input_dimension_y
 img_channel = input_channel
 
-''' Parameters for csv files '''
+''' Parameters for Computer'''
+gpu_num = 2
+threads_num = 5
 
+''' Parameters for csv files '''
 states_num_one_line = 17
 labels_num_one_line = 4
 
 # training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_deepth_img/deepth_rgb_semantics_depnoi/short/84"
-training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_deepth_noi_rotate"
+training_file_path = "/home/ubuntu/chg_workspace/data/noi_test"
 
+''' Shared data between threads '''
+files_num = 0
+current_file_num = -1
+paras_lock = 0  # 0: open 1: locked
+data_lock = np.zeros(threads_num-1)  # 0: ready to read  1: reading  2: ready to feed  3: feeding
+exit_flag = False
 
-''' Parameters for Computer'''
-gpu_num = 2
+file_path_depth = []
+file_path_dep_noi = []
+file_path_states = []
+file_path_labels = []
+files_seq_array = []
+
 
 ''' Parameters for concat fully layers'''
 fully_paras = {
@@ -231,70 +243,104 @@ def get_batch(seq, data):
     return result
 
 
-def read_threading(filename_img, filename_dep_noi, filename_state, filename_label, file_seq, data_house):
-    """
-    Read data thread function.
-    :param filename_pcl:  pcl filename
-    :param filename_state: state filename
-    :param filename_label: label filename
-    :param data_read_flags: flags to find a empty place
-    :param house: house to store data, composed of [[[pcl], [state1], [state2], [label]],   [],   [],   []...]
-    :return:
-    """
-    print "Start reading..."
-    depth = open(filename_img, "r")
-    img_num = len(depth.readlines())
-    depth.close()
-    if img_num == 0:
-        pass
-    else:
-        data_img = np.zeros([img_num, img_height, img_wid, img_channel])
-        read_img_threading(data_img, filename_img)
+def read_threading(coord, id):
 
-        data_img_noi = np.zeros([img_num, img_height, img_wid, img_channel])
-        read_img_threading(data_img_noi, filename_dep_noi)
+    global file_path_depth, file_path_dep_noi, file_path_states, file_path_labels, files_seq_array
 
-        name_to_print = os.path.splitext(filename_img)[0].split('/')[-1]
-        print "depth data " + str(name_to_print) + " get! img_num = " + str(img_num)
+    global files_num, current_file_num
+    global paras_lock  # 0: open 1: locked
+    global data_lock   # 0: ready to read  1: reading  2: ready to feed  3: feeding
 
-        # Just to make sure the data is read correctly
-        # compare_draw_3d_to_2d(data_pcl[10, :, :, :, 0], data_pcl[10, :, :, :, 0], 0, 1, 2, 12, 1)
+    global exit_flag
 
-        ''' Read state data '''
-        data_states = np.zeros([img_num, states_num_one_line])
-        # print "state name", filename_state
-        read_others(data_states, filename_state, states_num_one_line)
-        # print "state data get!"
+    while not coord.should_stop():
+        if exit_flag:
+            return
 
-        ''' Read label data '''
-        data_labels = np.zeros([img_num, labels_num_one_line])
-        read_others(data_labels, filename_label, labels_num_one_line)
-        # print "label data get!"
+        # check lock to add the order of files
+        while paras_lock == 1:
+            time.sleep(0.01)
 
-        ''' Get useful states and labels '''
-        commands_input_forward = np.concatenate([np.reshape(data_states[:, 13], [img_num, 1])
-                                                 for i in range(commands_compose_each)], axis=1)  # command: forward
-        commands_input_backward = np.concatenate([np.reshape(data_states[:, 14], [img_num, 1])
-                                                  for i in range(commands_compose_each)], axis=1)  # command: backward
-        commands_input_left = np.concatenate([np.reshape(data_states[:, 15], [img_num, 1])
-                                              for i in range(commands_compose_each)], axis=1)  # command: left
-        commands_input_right = np.concatenate([np.reshape(data_states[:, 16], [img_num, 1])
-                                               for i in range(commands_compose_each)], axis=1)  # command: right
-        commands_input = np.concatenate([commands_input_forward, commands_input_backward,
-                                         commands_input_left, commands_input_right], axis=1)
+        if exit_flag:
+            return
 
-        labels_ref = data_labels[:, 0:2]  # vel_cmd ref, angular_cmd ref
-        # print labels_ref
-        labels_ref[:, 1] = (0.8 * labels_ref[:, 1] + np.ones(img_num)) / 2.0  # !!!!!
-        # print labels_ref
+        paras_lock = 1
+        current_file_num += 1
 
-        ''' Store data to house '''
-        data_house[file_seq] = [data_img, data_img_noi, commands_input, labels_ref]
+        if current_file_num >= files_num:   # shuffle and begin a new epoch
+            current_file_num = 0
+            files_seq_array = generate_shuffled_array(0, files_num)
 
-        del data_img
-        del data_img_noi
-        del commands_input
-        del labels_ref
+        paras_lock = 0
+
+        # give reading file names
+        filename_img = file_path_depth[files_seq_array[current_file_num]]
+        filename_dep_noi = file_path_dep_noi[files_seq_array[current_file_num]]
+        filename_state = file_path_states[files_seq_array[current_file_num]]
+        filename_label = file_path_labels[files_seq_array[current_file_num]]
+
+        print "Start reading..."
+        depth = open(filename_img, "r")
+        img_num = len(depth.readlines())
+        depth.close()
+        if img_num == 0:
+            pass
+        else:
+            data_img = np.zeros([img_num, img_height, img_wid, img_channel])
+            read_img_threading(data_img, filename_img)
+
+            data_img_noi = np.zeros([img_num, img_height, img_wid, img_channel])
+            read_img_threading(data_img_noi, filename_dep_noi)
+
+            name_to_print = os.path.splitext(filename_img)[0].split('/')[-1]
+            print "depth data " + str(name_to_print) + " get! img_num = " + str(img_num)
+
+            # Just to make sure the data is read correctly
+            # compare_draw_3d_to_2d(data_pcl[10, :, :, :, 0], data_pcl[10, :, :, :, 0], 0, 1, 2, 12, 1)
+
+            ''' Read state data '''
+            data_states = np.zeros([img_num, states_num_one_line])
+            # print "state name", filename_state
+            read_others(data_states, filename_state, states_num_one_line)
+            # print "state data get!"
+
+            ''' Read label data '''
+            data_labels = np.zeros([img_num, labels_num_one_line])
+            read_others(data_labels, filename_label, labels_num_one_line)
+            # print "label data get!"
+
+            ''' Get useful states and labels '''
+            commands_input_forward = np.concatenate([np.reshape(data_states[:, 13], [img_num, 1])
+                                                     for i in range(commands_compose_each)], axis=1)  # command: forward
+            commands_input_backward = np.concatenate([np.reshape(data_states[:, 14], [img_num, 1])
+                                                      for i in range(commands_compose_each)], axis=1)  # command: backward
+            commands_input_left = np.concatenate([np.reshape(data_states[:, 15], [img_num, 1])
+                                                  for i in range(commands_compose_each)], axis=1)  # command: left
+            commands_input_right = np.concatenate([np.reshape(data_states[:, 16], [img_num, 1])
+                                                   for i in range(commands_compose_each)], axis=1)  # command: right
+            commands_input = np.concatenate([commands_input_forward, commands_input_backward,
+                                             commands_input_left, commands_input_right], axis=1)
+
+            labels_ref = data_labels[:, 0:2]  # vel_cmd ref, angular_cmd ref
+            # print labels_ref
+            labels_ref[:, 1] = (0.8 * labels_ref[:, 1] + np.ones(img_num)) / 2.0  # !!!!!
+            # print labels_ref
+
+            ''' Store data to house '''
+            while data_lock[id] != 0:
+                time.sleep(0.01)
+
+            data_lock[id] = 1
+            names = globals()
+            names['global_storage' + str(id)] = [data_img, data_img_noi, commands_input, labels_ref]
+            data_lock[id] = 2
+
+            print "thread " + str(id) + " got a file!"
+
+            del data_img
+            del data_img_noi
+            del commands_input
+            del labels_ref
 
 
 def read_img_threading(data_img, filename_img):
@@ -344,14 +390,8 @@ def read_others(data, filename, num_one_line):
             decrement = True
 
 
-def tf_training(data_house, file_num):
-    """
-    Main training function
-    :param data_read_flags: flag to find stored data
-    :param data_house: where the data stores
-    :param file_num: total file number of input csvs
-    :return:
-    """
+def tf_training(coord, name):
+
     ''' Calculate batch size '''
     batch_size_one_gpu = fully_paras["raw_batch_size"]
     batch_size = batch_size_one_gpu * gpu_num
@@ -476,20 +516,34 @@ def tf_training(data_house, file_num):
                 print "Partially restored from encoder !!"
 
             # start epochs
+            global files_num, threads_num
+            global data_lock  # 0: ready to read  1: reading  2: ready to feed  3: feeding
+            names = globals()
+            # names['global_storage' + str(id)]
+
             for epoch in range(epoch_num):
                 print "epoch: " + str(epoch)
                 t0 = time.time()
-
-                seq_array = generate_shuffled_array(0, file_num)
                 ''' waiting for data '''
-                for file_seq in range(file_num):
-                    read_seq = seq_array[file_seq]
+                for file_seq in range(files_num):
+
+                    data_id_this = 0
+                    waiting_flag = True
+                    while waiting_flag:
+                        for data_thd_id in range(threads_num-1):
+                            if data_lock[data_thd_id] == 2:
+                                data_lock[data_thd_id] = 3
+                                data_id_this = data_thd_id
+                                waiting_flag = False
+                                break
 
                     noi_seq = np.random.random_integers(0, 1)  # 0 no noise, 1 with noise
-                    data_mat_pcl = data_house[read_seq][noi_seq]
-                    data_mat_command = data_house[read_seq][2]
-                    data_mat_label = data_house[read_seq][3]
+                    data_mat_pcl = names['global_storage' + str(data_id_this)][noi_seq]
+                    data_mat_command = names['global_storage' + str(data_id_this)][2]
+                    data_mat_label = names['global_storage' + str(data_id_this)][3]
                     data_num = data_mat_pcl.shape[0]
+
+                    data_lock[data_id_this] = 0  # ready to read again
 
                     batch_num = int(data_num / batch_size)
 
@@ -529,16 +583,22 @@ def tf_training(data_house, file_num):
                     # save
                     saver.save(sess, model_save_path + "simulation_cnn_rnn" + str(epoch) + ".ckpt")
 
+            global exit_flag
+            exit_flag = True
+
 
 if __name__ == '__main__':
+
+    ''' Create the global names for data storage '''
+    names = globals()
+    for i in range(threads_num-1):
+        names['global_storage' + str(i)] = 0
+
     ''' Search for training data in the training folder '''
     scan = file_walker.ScanFile(training_file_path)
     files = scan.scan_files()
 
-    file_path_depth = []
-    file_path_dep_noi = []
-    file_path_states = []
-    file_path_labels = []
+    global file_path_depth, file_path_dep_noi, file_path_states, file_path_labels
 
     file_type = '.csv'
     for file in files:
@@ -552,18 +612,21 @@ if __name__ == '__main__':
 
     print "Found " + str(len(file_path_depth)) + " files to train!!!"
 
+    global files_num
     files_num = len(file_path_depth)
-    data_house = [0 for i in range(files_num)]
 
-    # Data Reading
-    for seq in range(files_num):
-        # pool.apply_async(test)
-        filename_depth_this = file_path_depth[seq]
-        filename_states_this = file_path_states[seq]
-        filename_labels_this = file_path_labels[seq]
-        filename_dep_noi_this = file_path_dep_noi[seq]
+    global files_seq_array
+    files_seq_array = generate_shuffled_array(0, files_num)
 
-        read_threading(filename_depth_this, filename_dep_noi_this, filename_states_this, filename_labels_this, seq, data_house)
+    coord = tf.train.Coordinator()
 
-    tf_training(data_house, files_num)
+    name = "tf"
+    tf_thread = threading.Thread(target=tf_training, args=(coord, name))
+    tf_thread.start()
+    time.sleep(30)
 
+    threads = [threading.Thread(target=read_threading, args=(coord, i)) for i in range(threads_num - 1)]
+    for t in threads:
+        t.start()
+
+    coord.join(threads)

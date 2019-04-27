@@ -20,8 +20,7 @@ file_writer = csv.writer(fileobj)
 
 commands_compose_each = 1  # Should be "input3_dim": 8  / 4
 
-# model_path = "/home/ubuntu/chg_workspace/depth/model/cnn_nornn/01/model/simulation_cnn_rnn200.ckpt"
-model_path = "/home/ubuntu/chg_workspace/depth/model/cnn_nornn/01_noi/model/simulation_cnn_rnn400.ckpt"
+model_path = "/home/ubuntu/chg_workspace/depth/model/cnn_nornn/01_noi_rotate/model/simulation_cnn_rnn_iter3.ckpt"
 
 ''' Parameters for input vectors'''
 input_paras = {

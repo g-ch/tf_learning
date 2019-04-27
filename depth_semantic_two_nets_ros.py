@@ -13,7 +13,8 @@ import cv2
 
 commands_compose_each = 1  # Should be "input3_dim": 8  / 4
 
-model_path = "/home/ubuntu/chg_workspace/depth_semantic/model/two_nets/model/depth_semantic_two_nets/model/simulation_cnn_rnn250.ckpt"
+#model_path = "/home/ubuntu/chg_workspace/depth_semantic/model/two_nets/model/depth_semantic_two_nets/model/simulation_cnn_rnn250.ckpt"
+model_path = "/home/ubuntu/chg_workspace/depth_semantic/model/two_nets/model/depth_noi_semantic/model/simulation_cnn_rnn400.ckpt"
 
 ''' Parameters for input vectors'''
 input_paras = {

@@ -9,11 +9,6 @@ import time
 import gc
 import file_walker
 import os
-import cv2
-from multiprocessing import Pool
-import multiprocessing
-thres_gaussian = 0.5
-thres_pepper = 0.2
 
 ''' Parameters for training '''
 ''' Batch size defined in Parameters for RNN '''
@@ -21,22 +16,22 @@ learning_rate = 1e-4
 regularization_para = 1e-7  # might have problem in rgb training, too many parameters
 epoch_num = 501
 save_every_n_epoch = 50
-training_times_simple_epoch = 2
+training_times_simple_epoch = 1
 if_train_encoder = True
 if_continue_train = False
 if_regularization = True
 
-model_save_path = "/home/ubuntu/chg_workspace/depth/model/cnn_nornn/01_noi_rotate/model/"
-image_save_path = "/home/ubuntu/chg_workspace/depth/model/cnn_nornn/01_noi_rotate/plot/"
+model_save_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/02_standard_data/model/"
+image_save_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/02_standard_data/plot/"
 
-encoder_model = "/home/ubuntu/chg_workspace/depth/model/encoder/01/model/simulation_autoencoder_500.ckpt"
+encoder_model = "/home/ubuntu/chg_workspace/rgb/model/encoder/01/model/simulation_autoencoder_900.ckpt"
 last_model = ""
 
 ''' Parameters for input vectors'''
 input_paras = {
     "input1_dim_x": 256,
     "input1_dim_y": 192,
-    "input1_dim_channel": 1,
+    "input1_dim_channel": 3,
     "input2_dim": 4  # commands
 }
 
@@ -55,9 +50,8 @@ img_channel = input_channel
 states_num_one_line = 17
 labels_num_one_line = 4
 
-# training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_deepth_img/deepth_rgb_semantics_depnoi/short/84"
-training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_deepth_noi_rotate"
-
+# training_file_path = "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train"
+training_file_path = "/home/ubuntu/chg_workspace/data/noi_test/rggb"
 
 ''' Parameters for Computer'''
 gpu_num = 2
@@ -231,7 +225,7 @@ def get_batch(seq, data):
     return result
 
 
-def read_threading(filename_img, filename_dep_noi, filename_state, filename_label, file_seq, data_house):
+def read_threading(filename_img, filename_img_noi, filename_state, filename_label, file_seq, data_house):
     """
     Read data thread function.
     :param filename_pcl:  pcl filename
@@ -242,59 +236,48 @@ def read_threading(filename_img, filename_dep_noi, filename_state, filename_labe
     :return:
     """
     print "Start reading..."
-    depth = open(filename_img, "r")
-    img_num = len(depth.readlines())
-    depth.close()
-    if img_num == 0:
-        pass
-    else:
-        data_img = np.zeros([img_num, img_height, img_wid, img_channel])
-        read_img_threading(data_img, filename_img)
+    ''' Read pcl data first '''
+    clouds = open(filename_img, "r")
+    img_num = len(clouds.readlines())
+    clouds.close()
+    data_img = np.zeros([img_num, img_height, img_wid, img_channel])
+    read_img_threading(data_img, filename_img)
 
-        data_img_noi = np.zeros([img_num, img_height, img_wid, img_channel])
-        read_img_threading(data_img_noi, filename_dep_noi)
+    data_img_noi = np.zeros([img_num, img_height, img_wid, img_channel])
+    read_img_threading(data_img_noi, filename_img_noi)
+    print "rgb data get! img_num = " + str(img_num)
 
-        name_to_print = os.path.splitext(filename_img)[0].split('/')[-1]
-        print "depth data " + str(name_to_print) + " get! img_num = " + str(img_num)
 
-        # Just to make sure the data is read correctly
-        # compare_draw_3d_to_2d(data_pcl[10, :, :, :, 0], data_pcl[10, :, :, :, 0], 0, 1, 2, 12, 1)
+    ''' Read state data '''
+    data_states = np.zeros([img_num, states_num_one_line])
+    # print "state name", filename_state
+    read_others(data_states, filename_state, states_num_one_line)
+    # print "state data get!"
 
-        ''' Read state data '''
-        data_states = np.zeros([img_num, states_num_one_line])
-        # print "state name", filename_state
-        read_others(data_states, filename_state, states_num_one_line)
-        # print "state data get!"
+    ''' Read label data '''
+    data_labels = np.zeros([img_num, labels_num_one_line])
+    read_others(data_labels, filename_label, labels_num_one_line)
+    # print "label data get!"
 
-        ''' Read label data '''
-        data_labels = np.zeros([img_num, labels_num_one_line])
-        read_others(data_labels, filename_label, labels_num_one_line)
-        # print "label data get!"
+    ''' Get useful states and labels '''
+    commands_input_forward = np.concatenate([np.reshape(data_states[:, 13], [img_num, 1])
+                                             for i in range(commands_compose_each)], axis=1)  # command: forward
+    commands_input_backward = np.concatenate([np.reshape(data_states[:, 14], [img_num, 1])
+                                              for i in range(commands_compose_each)], axis=1)  # command: backward
+    commands_input_left = np.concatenate([np.reshape(data_states[:, 15], [img_num, 1])
+                                          for i in range(commands_compose_each)], axis=1)  # command: left
+    commands_input_right = np.concatenate([np.reshape(data_states[:, 16], [img_num, 1])
+                                           for i in range(commands_compose_each)], axis=1)  # command: right
+    commands_input = np.concatenate([commands_input_forward, commands_input_backward,
+                                     commands_input_left, commands_input_right], axis=1)
 
-        ''' Get useful states and labels '''
-        commands_input_forward = np.concatenate([np.reshape(data_states[:, 13], [img_num, 1])
-                                                 for i in range(commands_compose_each)], axis=1)  # command: forward
-        commands_input_backward = np.concatenate([np.reshape(data_states[:, 14], [img_num, 1])
-                                                  for i in range(commands_compose_each)], axis=1)  # command: backward
-        commands_input_left = np.concatenate([np.reshape(data_states[:, 15], [img_num, 1])
-                                              for i in range(commands_compose_each)], axis=1)  # command: left
-        commands_input_right = np.concatenate([np.reshape(data_states[:, 16], [img_num, 1])
-                                               for i in range(commands_compose_each)], axis=1)  # command: right
-        commands_input = np.concatenate([commands_input_forward, commands_input_backward,
-                                         commands_input_left, commands_input_right], axis=1)
+    labels_ref = data_labels[:, 0:2]  # vel_cmd ref, angular_cmd ref
+    # print labels_ref
+    labels_ref[:, 1] = (0.8 * labels_ref[:, 1] + np.ones(img_num)) / 2.0  # !!!!!
+    # print labels_ref
 
-        labels_ref = data_labels[:, 0:2]  # vel_cmd ref, angular_cmd ref
-        # print labels_ref
-        labels_ref[:, 1] = (0.8 * labels_ref[:, 1] + np.ones(img_num)) / 2.0  # !!!!!
-        # print labels_ref
-
-        ''' Store data to house '''
-        data_house[file_seq] = [data_img, data_img_noi, commands_input, labels_ref]
-
-        del data_img
-        del data_img_noi
-        del commands_input
-        del labels_ref
+    ''' Store data to house '''
+    data_house[file_seq] = [data_img, data_img_noi, commands_input, labels_ref]
 
 
 def read_img_threading(data_img, filename_img):
@@ -315,9 +298,33 @@ def read_img_threading(data_img, filename_img):
                 for row in csv_reader:
                     for i in range(img_height):
                         for j in range(img_wid):
-                            data_img[i_row, i, j] = row[i * img_wid + j]
+                            for k in range(3):
+                                data_img[i_row, i, j, k] = row[i * img_wid * 3 + j * 3 + k]
                     i_row = i_row + 1
                 # list_result.append(data)
+        except OverflowError:
+            maxInt = int(maxInt / 10)
+            decrement = True
+
+
+def read_pcl(data, filename):
+    maxInt = sys.maxsize
+    decrement = True
+    while decrement:
+        # decrease the maxInt value by factor 10
+        # as long as the OverflowError occurs.
+        decrement = False
+        try:
+            csv.field_size_limit(maxInt)
+            with open(filename, mode='r') as csvfile:
+                csv_reader = csv.reader(csvfile, delimiter=',', quotechar='|')
+                i_row = 0
+                for row in csv_reader:
+                    for i in range(img_wid):
+                        for j in range(img_wid):
+                            for k in range(img_height):
+                                data[i_row, i, j, k, 0] = row[i * img_wid * img_height + j * img_height + k]
+                    i_row = i_row + 1
         except OverflowError:
             maxInt = int(maxInt / 10)
             decrement = True
@@ -362,7 +369,7 @@ def tf_training(data_house, file_num):
         global_step = tf.train.get_or_create_global_step()
         tower_grads = []
         rgb_data = tf.placeholder("float", name="rgb_data", shape=[None, input_dimension_y, input_dimension_x,
-                                  input_channel])
+                                                                    input_channel])
         line_data_2 = tf.placeholder("float", name="line_data", shape=[None, input_paras["input2_dim"]])  # commands
         reference = tf.placeholder("float", name="reference", shape=[None, fully_paras["output_len"]])
 
@@ -465,7 +472,6 @@ def tf_training(data_house, file_num):
         config = tf.ConfigProto(allow_soft_placement=True)  # log_device_placement=True
         # config.gpu_options.allow_growth = True  # only 300M memory
 
-
         with tf.Session(config=config) as sess:
             sess.run(tf.global_variables_initializer())  # initialze variables
             if if_continue_train:
@@ -486,10 +492,16 @@ def tf_training(data_house, file_num):
                     read_seq = seq_array[file_seq]
 
                     noi_seq = np.random.random_integers(0, 1)  # 0 no noise, 1 with noise
-                    data_mat_pcl = data_house[read_seq][noi_seq]
+
+                    data_mat_rgb = data_house[read_seq][noi_seq]
                     data_mat_command = data_house[read_seq][2]
                     data_mat_label = data_house[read_seq][3]
-                    data_num = data_mat_pcl.shape[0]
+                    data_num = data_mat_rgb.shape[0]
+
+                    print "done loading data.., data size = ", data_mat_rgb.shape[0]
+                    if data_mat_rgb.shape[0] <= batch_size + 1:
+                        print "Too little data, continue to next file!"
+                        continue
 
                     batch_num = int(data_num / batch_size)
 
@@ -499,11 +511,11 @@ def tf_training(data_house, file_num):
 
                         # start batches
                         for batch_seq in range(batch_num):
-                            # print "batch" + str(batch_seq)
+                            print "batch" + str(batch_seq)
                             # get data for this batch
                             start_position = batch_seq * batch_size
                             end_position = (batch_seq + 1) * batch_size
-                            data_pcl_batch = get_batch(sequence[start_position:end_position], data_mat_pcl)
+                            data_rgb_batch = get_batch(sequence[start_position:end_position], data_mat_rgb)
                             data_command_batch = get_batch(sequence[start_position:end_position], data_mat_command)
                             label_batch = get_batch(sequence[start_position:end_position], data_mat_label)
 
@@ -511,15 +523,14 @@ def tf_training(data_house, file_num):
                             # draw_plots(np.arange(0, batch_size), label_to_draw)
 
                             # train
-                            sess.run(train_op, feed_dict={rgb_data: data_pcl_batch,
+                            sess.run(train_op, feed_dict={rgb_data: data_rgb_batch,
                                                           line_data_2: data_command_batch, reference: label_batch})
 
-                            del data_pcl_batch
+                            del data_rgb_batch
                             del data_command_batch
                             del label_batch
 
-                    del data_mat_pcl
-                    del data_mat_command
+                    del data_mat_rgb
                     del data_mat_label
                     del data_num
 
@@ -535,35 +546,35 @@ if __name__ == '__main__':
     scan = file_walker.ScanFile(training_file_path)
     files = scan.scan_files()
 
-    file_path_depth = []
-    file_path_dep_noi = []
+    file_path_rgb = []
+    file_path_rgb_noi = []
     file_path_states = []
     file_path_labels = []
 
     file_type = '.csv'
     for file in files:
         if os.path.splitext(file)[1] == file_type:
-            if os.path.splitext(file)[0].split('/')[-1].split('_')[0] == 'depth':
-                file_path_depth.append(file)
-                file_path_states.append(file.replace('depth', 'uav'))
-                file_path_labels.append(file.replace('depth', 'label'))
-                # file_path_dep_noi.append(file.replace('depth', 'dep_noi'))
-                file_path_dep_noi.append(file.replace('depth_data', 'dep_noi_data'))
+            if os.path.splitext(file)[0].split('/')[-1].split('_')[0] == 'rgb'\
+                    and os.path.splitext(file)[0].split('/')[-1].split('_')[1] == 'data':
+                file_path_rgb.append(file)
+                file_path_states.append(file.replace('rgb', 'uav'))
+                file_path_labels.append(file.replace('rgb', 'label'))
+                file_path_rgb_noi.append(file.replace('rgb', 'rgb_noi'))
 
-    print "Found " + str(len(file_path_depth)) + " files to train!!!"
+    print "Found " + str(len(file_path_rgb)) + " files to train!!!"
 
-    files_num = len(file_path_depth)
+    files_num = len(file_path_rgb)
     data_house = [0 for i in range(files_num)]
 
     # Data Reading
-    for seq in range(files_num):
-        # pool.apply_async(test)
-        filename_depth_this = file_path_depth[seq]
-        filename_states_this = file_path_states[seq]
-        filename_labels_this = file_path_labels[seq]
-        filename_dep_noi_this = file_path_dep_noi[seq]
+    for i in range(files_num):
+        filename_rgb_this = file_path_rgb[i]
+        filename_rgb_noi_this = file_path_rgb_noi[i]
+        filename_states_this = file_path_states[i]
+        filename_labels_this = file_path_labels[i]
 
-        read_threading(filename_depth_this, filename_dep_noi_this, filename_states_this, filename_labels_this, seq, data_house)
+        read_threading(filename_rgb_this, filename_rgb_noi_this, filename_states_this, filename_labels_this, i, data_house)
 
     tf_training(data_house, files_num)
+
 

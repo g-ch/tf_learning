@@ -1,19 +1,12 @@
 import tensorflow as tf
 import numpy as np
-import random
 import matplotlib.pyplot as plt
-import matplotlib as mpl
 import sys
 import csv
 import time
 import gc
 import file_walker
 import os
-import cv2
-from multiprocessing import Pool
-import multiprocessing
-thres_gaussian = 0.5
-thres_pepper = 0.2
 
 ''' Parameters for training '''
 ''' Batch size defined in Parameters for RNN '''
@@ -26,10 +19,11 @@ if_train_encoder = True
 if_continue_train = False
 if_regularization = True
 
-model_save_path = "/home/ubuntu/chg_workspace/depth/model/cnn_nornn/01_noi_rotate/model/"
-image_save_path = "/home/ubuntu/chg_workspace/depth/model/cnn_nornn/01_noi_rotate/plot/"
+model_save_path = "/home/ubuntu/chg_workspace/depth_semantic/model/two_nets/model/depth_noi_semantic/model/"
+image_save_path = "/home/ubuntu/chg_workspace/depth_semantic/model/two_nets/model/depth_noi_semantic/plot/"
 
 encoder_model = "/home/ubuntu/chg_workspace/depth/model/encoder/01/model/simulation_autoencoder_500.ckpt"
+
 last_model = ""
 
 ''' Parameters for input vectors'''
@@ -38,6 +32,12 @@ input_paras = {
     "input1_dim_y": 192,
     "input1_dim_channel": 1,
     "input2_dim": 4  # commands
+}
+
+input_semantic_paras = {
+    "input_dim_x": 256,
+    "input_dim_y": 192,
+    "input_dim_channel": 1,
 }
 
 commands_compose_each = 1  # Should be "input3_dim": 4  / 4
@@ -55,9 +55,7 @@ img_channel = input_channel
 states_num_one_line = 17
 labels_num_one_line = 4
 
-# training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_deepth_img/deepth_rgb_semantics_depnoi/short/84"
-training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_deepth_noi_rotate"
-
+training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_deepth_noi_rotate/test"
 
 ''' Parameters for Computer'''
 gpu_num = 2
@@ -65,7 +63,7 @@ gpu_num = 2
 ''' Parameters for concat fully layers'''
 fully_paras = {
     "raw_batch_size": 20,
-    "input_len": 544,
+    "input_len": 576,
     "layer1_len": 256,
     "layer2_len": 64,
     "output_len": 2
@@ -74,7 +72,8 @@ fully_paras = {
 ''' Parameters for concat values'''
 concat_paras = {
     "dim1": 512,  # should be the same as encoder out dim
-    "dim2": 32  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
+    "dim2": 32,  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
+    "dim3": 32   # for semantic info
 }
 
 ''' Parameters for CNN encoder'''
@@ -93,6 +92,24 @@ encoder_para = {
     "stride4": 2,
     "channel4": 256,
     "out_dia": 12288
+}
+
+''' Parameters for semantic part'''
+semantic_para = {
+    "kernel1": 5,
+    "stride1": 2,
+    "channel1": 8,
+    "pool1": 2,
+    "kernel2": 3,
+    "stride2": 2,
+    "channel2": 16,
+    "pool2": 2,
+    "kernel3": 3,
+    "stride3": 2,
+    "channel3": 32,
+    "out_dia": 1536,
+    "fully1": 64,
+    "fully2": 32
 }
 
 
@@ -167,6 +184,52 @@ def encoder(x):
             return conv4_1
 
 
+def semantic_networks(x):
+    print "building semantic network.."
+    k1 = semantic_para["kernel1"]
+    s1 = semantic_para["stride1"]
+    d1 = semantic_para["channel1"]
+    p1 = semantic_para["pool1"]
+
+    k2 = semantic_para["kernel2"]
+    s2 = semantic_para["stride2"]
+    d2 = semantic_para["channel2"]
+    p2 = semantic_para["pool2"]
+
+    k3 = semantic_para["kernel3"]
+    s3 = semantic_para["stride3"]
+    d3 = semantic_para["channel3"]
+
+    out_dia = semantic_para["out_dia"]
+    f1 = semantic_para["fully1"]
+    f2 = semantic_para["fully2"]
+
+    with tf.variable_scope("semantic"):
+        with tf.variable_scope("conv1"):
+            conv1 = conv2d_relu(x, [k1, k1, input_semantic_paras["input_dim_channel"], d1], [d1], [1, s1, s1, 1])
+
+        with tf.variable_scope("pool1"):
+            max_pool1 = max_pool(conv1, [1, p1, p1, 1], [1, p1, p1, 1])
+
+        with tf.variable_scope("conv2"):
+            conv2 = conv2d_relu(max_pool1, [k2, k2, d1, d2], [d2], [1, s2, s2, 1])
+
+        with tf.variable_scope("pool2"):
+            max_pool2 = max_pool(conv2, [1, p2, p2, 1], [1, p2, p2, 1])
+
+        with tf.variable_scope("conv3"):
+            conv3 = conv2d_relu(max_pool2, [k3, k3, d2, d3], [d3], [1, s3, s3, 1])
+
+        with tf.variable_scope("fully1"):
+            vector_flat = tf.reshape(conv3, [-1, out_dia])
+            fully1 = relu_layer(vector_flat, out_dia, f1)
+
+        with tf.variable_scope("fully2"):
+            fully2 = relu_layer(fully1, f1, f2)
+
+            return fully2
+
+
 def average_gradients(tower_grads):
     average_grads = []
     for grad_and_vars in zip(*tower_grads):
@@ -231,7 +294,7 @@ def get_batch(seq, data):
     return result
 
 
-def read_threading(filename_img, filename_dep_noi, filename_state, filename_label, file_seq, data_house):
+def read_threading(filename_img1, filename_img1_noi, filename_img2, filename_state, filename_label, file_seq, data_house):
     """
     Read data thread function.
     :param filename_pcl:  pcl filename
@@ -242,62 +305,53 @@ def read_threading(filename_img, filename_dep_noi, filename_state, filename_labe
     :return:
     """
     print "Start reading..."
-    depth = open(filename_img, "r")
-    img_num = len(depth.readlines())
-    depth.close()
-    if img_num == 0:
-        pass
-    else:
-        data_img = np.zeros([img_num, img_height, img_wid, img_channel])
-        read_img_threading(data_img, filename_img)
+    ''' Read pcl data first '''
+    clouds = open(filename_img1, "r")
+    img_num = len(clouds.readlines())
+    clouds.close()
+    data_img1 = np.zeros([img_num, img_height, img_wid, img_channel])
+    data_img1_noi = np.zeros([img_num, img_height, img_wid, img_channel])
+    data_img2 = np.zeros([img_num, img_height, img_wid, input_semantic_paras["input_dim_channel"]])
 
-        data_img_noi = np.zeros([img_num, img_height, img_wid, img_channel])
-        read_img_threading(data_img_noi, filename_dep_noi)
+    read_img(data_img1,  filename_img1)
+    read_img(data_img1_noi, filename_img1_noi)
+    read_img(data_img2, filename_img2)
 
-        name_to_print = os.path.splitext(filename_img)[0].split('/')[-1]
-        print "depth data " + str(name_to_print) + " get! img_num = " + str(img_num)
+    print "rgb data get! img_num = " + str(img_num)
 
-        # Just to make sure the data is read correctly
-        # compare_draw_3d_to_2d(data_pcl[10, :, :, :, 0], data_pcl[10, :, :, :, 0], 0, 1, 2, 12, 1)
+    ''' Read state data '''
+    data_states = np.zeros([img_num, states_num_one_line])
+    # print "state name", filename_state
+    read_others(data_states, filename_state, states_num_one_line)
+    # print "state data get!"
 
-        ''' Read state data '''
-        data_states = np.zeros([img_num, states_num_one_line])
-        # print "state name", filename_state
-        read_others(data_states, filename_state, states_num_one_line)
-        # print "state data get!"
+    ''' Read label data '''
+    data_labels = np.zeros([img_num, labels_num_one_line])
+    read_others(data_labels, filename_label, labels_num_one_line)
+    # print "label data get!"
 
-        ''' Read label data '''
-        data_labels = np.zeros([img_num, labels_num_one_line])
-        read_others(data_labels, filename_label, labels_num_one_line)
-        # print "label data get!"
+    ''' Get useful states and labels '''
+    commands_input_forward = np.concatenate([np.reshape(data_states[:, 13], [img_num, 1])
+                                             for i in range(commands_compose_each)], axis=1)  # command: forward
+    commands_input_backward = np.concatenate([np.reshape(data_states[:, 14], [img_num, 1])
+                                              for i in range(commands_compose_each)], axis=1)  # command: backward
+    commands_input_left = np.concatenate([np.reshape(data_states[:, 15], [img_num, 1])
+                                          for i in range(commands_compose_each)], axis=1)  # command: left
+    commands_input_right = np.concatenate([np.reshape(data_states[:, 16], [img_num, 1])
+                                           for i in range(commands_compose_each)], axis=1)  # command: right
+    commands_input = np.concatenate([commands_input_forward, commands_input_backward,
+                                     commands_input_left, commands_input_right], axis=1)
 
-        ''' Get useful states and labels '''
-        commands_input_forward = np.concatenate([np.reshape(data_states[:, 13], [img_num, 1])
-                                                 for i in range(commands_compose_each)], axis=1)  # command: forward
-        commands_input_backward = np.concatenate([np.reshape(data_states[:, 14], [img_num, 1])
-                                                  for i in range(commands_compose_each)], axis=1)  # command: backward
-        commands_input_left = np.concatenate([np.reshape(data_states[:, 15], [img_num, 1])
-                                              for i in range(commands_compose_each)], axis=1)  # command: left
-        commands_input_right = np.concatenate([np.reshape(data_states[:, 16], [img_num, 1])
-                                               for i in range(commands_compose_each)], axis=1)  # command: right
-        commands_input = np.concatenate([commands_input_forward, commands_input_backward,
-                                         commands_input_left, commands_input_right], axis=1)
+    labels_ref = data_labels[:, 0:2]  # vel_cmd ref, angular_cmd ref
+    # print labels_ref
+    labels_ref[:, 1] = (0.8 * labels_ref[:, 1] + np.ones(img_num)) / 2.0  # !!!!!
+    # print labels_ref
 
-        labels_ref = data_labels[:, 0:2]  # vel_cmd ref, angular_cmd ref
-        # print labels_ref
-        labels_ref[:, 1] = (0.8 * labels_ref[:, 1] + np.ones(img_num)) / 2.0  # !!!!!
-        # print labels_ref
-
-        ''' Store data to house '''
-        data_house[file_seq] = [data_img, data_img_noi, commands_input, labels_ref]
-
-        del data_img
-        del data_img_noi
-        del commands_input
-        del labels_ref
+    ''' Store data to house '''
+    data_house[file_seq] = [data_img1, data_img1_noi, data_img2, commands_input, labels_ref]
 
 
-def read_img_threading(data_img, filename_img):
+def read_img(data_img1, filename_img1):
     maxInt = sys.maxsize
     decrement = True
 
@@ -306,16 +360,15 @@ def read_img_threading(data_img, filename_img):
         # as long as the OverflowError occurs.
         decrement = False
         try:
-            # print "begin read img data..", "filename_img=", filename_img
             csv.field_size_limit(maxInt)
 
-            with open(filename_img, mode='r') as csvfile:
+            with open(filename_img1, mode='r') as csvfile:
                 csv_reader = csv.reader(csvfile, delimiter=',', quotechar='|')
                 i_row = 0
                 for row in csv_reader:
                     for i in range(img_height):
                         for j in range(img_wid):
-                            data_img[i_row, i, j] = row[i * img_wid + j]
+                            data_img1[i_row, i, j, 0] = row[i * img_wid + j]
                     i_row = i_row + 1
                 # list_result.append(data)
         except OverflowError:
@@ -361,8 +414,12 @@ def tf_training(data_house, file_num):
     with tf.device("/cpu:0"):
         global_step = tf.train.get_or_create_global_step()
         tower_grads = []
-        rgb_data = tf.placeholder("float", name="rgb_data", shape=[None, input_dimension_y, input_dimension_x,
-                                  input_channel])
+        depth_data = tf.placeholder("float", name="rgb_data", shape=[None, input_dimension_y, input_dimension_x,
+                                    input_channel])
+        semantic_data = tf.placeholder("float", name="semantic_data", shape=[None, input_semantic_paras["input_dim_y"],
+                                                                             input_semantic_paras["input_dim_x"],
+                                                                             input_semantic_paras["input_dim_channel"]])
+
         line_data_2 = tf.placeholder("float", name="line_data", shape=[None, input_paras["input2_dim"]])  # commands
         reference = tf.placeholder("float", name="reference", shape=[None, fully_paras["output_len"]])
 
@@ -372,14 +429,19 @@ def tf_training(data_house, file_num):
             for gpu_seq in range(gpu_num):
                 with tf.device("/gpu:%d" % gpu_seq):
                     # Set data for each gpu
-                    rgb_data_this_gpu = rgb_data[gpu_seq * batch_size_one_gpu:
-                                                   (gpu_seq + 1) * batch_size_one_gpu, :, :, :]
+                    depth_data_this_gpu = depth_data[gpu_seq * batch_size_one_gpu:
+                                                     (gpu_seq + 1) * batch_size_one_gpu, :, :, :]
+                    semantic_data_this_gpu = semantic_data[gpu_seq * batch_size_one_gpu:
+                                                           (gpu_seq + 1) * batch_size_one_gpu, :, :, :]
                     line_data_2_this_gpu = line_data_2[gpu_seq * batch_size_one_gpu:
                                                        (gpu_seq + 1) * batch_size_one_gpu, :]
                     reference_this_gpu = reference[gpu_seq * batch_size_one_gpu:(gpu_seq + 1) * batch_size_one_gpu, :]
 
-                    # 3D CNN
-                    encode_vector = encoder(rgb_data_this_gpu)
+                    # Semantic data
+                    semantic_vector_flat = semantic_networks(semantic_data_this_gpu)
+
+                    # depth
+                    encode_vector = encoder(depth_data_this_gpu)
                     print "encoder built"
                     # To flat vector
                     encode_vector_flat = tf.reshape(encode_vector, [-1, encoder_para["out_dia"]])
@@ -401,7 +463,7 @@ def tf_training(data_house, file_num):
                                                         concat_paras["dim2"])
 
                     # Concat, Note: dimension parameter should be 1, considering batch size
-                    concat_vector = tf.concat([map_data_line, commands_data_line], 1)
+                    concat_vector = tf.concat([map_data_line, commands_data_line, semantic_vector_flat], 1)
                     print "concat complete"
 
                     # Add a fully connected layer for all input
@@ -465,7 +527,6 @@ def tf_training(data_house, file_num):
         config = tf.ConfigProto(allow_soft_placement=True)  # log_device_placement=True
         # config.gpu_options.allow_growth = True  # only 300M memory
 
-
         with tf.Session(config=config) as sess:
             sess.run(tf.global_variables_initializer())  # initialze variables
             if if_continue_train:
@@ -486,10 +547,11 @@ def tf_training(data_house, file_num):
                     read_seq = seq_array[file_seq]
 
                     noi_seq = np.random.random_integers(0, 1)  # 0 no noise, 1 with noise
-                    data_mat_pcl = data_house[read_seq][noi_seq]
-                    data_mat_command = data_house[read_seq][2]
-                    data_mat_label = data_house[read_seq][3]
-                    data_num = data_mat_pcl.shape[0]
+                    data_mat_depth = data_house[read_seq][noi_seq]
+                    data_mat_semantic = data_house[read_seq][2]
+                    data_mat_command = data_house[read_seq][3]
+                    data_mat_label = data_house[read_seq][4]
+                    data_num = data_mat_depth.shape[0]
 
                     batch_num = int(data_num / batch_size)
 
@@ -499,11 +561,12 @@ def tf_training(data_house, file_num):
 
                         # start batches
                         for batch_seq in range(batch_num):
-                            # print "batch" + str(batch_seq)
+                            print "batch" + str(batch_seq)
                             # get data for this batch
                             start_position = batch_seq * batch_size
                             end_position = (batch_seq + 1) * batch_size
-                            data_pcl_batch = get_batch(sequence[start_position:end_position], data_mat_pcl)
+                            data_depth_batch = get_batch(sequence[start_position:end_position], data_mat_depth)
+                            data_semantic_batch = get_batch(sequence[start_position:end_position], data_mat_semantic)
                             data_command_batch = get_batch(sequence[start_position:end_position], data_mat_command)
                             label_batch = get_batch(sequence[start_position:end_position], data_mat_label)
 
@@ -511,14 +574,16 @@ def tf_training(data_house, file_num):
                             # draw_plots(np.arange(0, batch_size), label_to_draw)
 
                             # train
-                            sess.run(train_op, feed_dict={rgb_data: data_pcl_batch,
+                            sess.run(train_op, feed_dict={depth_data: data_depth_batch, semantic_data:data_semantic_batch,
                                                           line_data_2: data_command_batch, reference: label_batch})
 
-                            del data_pcl_batch
+                            del data_depth_batch
+                            del data_semantic_batch
                             del data_command_batch
                             del label_batch
 
-                    del data_mat_pcl
+                    del data_mat_depth
+                    del data_mat_semantic
                     del data_mat_command
                     del data_mat_label
                     del data_num
@@ -537,6 +602,7 @@ if __name__ == '__main__':
 
     file_path_depth = []
     file_path_dep_noi = []
+    file_path_semantic = []
     file_path_states = []
     file_path_labels = []
 
@@ -547,8 +613,8 @@ if __name__ == '__main__':
                 file_path_depth.append(file)
                 file_path_states.append(file.replace('depth', 'uav'))
                 file_path_labels.append(file.replace('depth', 'label'))
-                # file_path_dep_noi.append(file.replace('depth', 'dep_noi'))
-                file_path_dep_noi.append(file.replace('depth_data', 'dep_noi_data'))
+                file_path_semantic.append(file.replace('depth_data', 'semantics'))
+                file_path_dep_noi.append(file.replace('depth', 'dep_noi'))
 
     print "Found " + str(len(file_path_depth)) + " files to train!!!"
 
@@ -561,9 +627,10 @@ if __name__ == '__main__':
         filename_depth_this = file_path_depth[seq]
         filename_states_this = file_path_states[seq]
         filename_labels_this = file_path_labels[seq]
+        filename_semantics_this = file_path_semantic[seq]
         filename_dep_noi_this = file_path_dep_noi[seq]
 
-        read_threading(filename_depth_this, filename_dep_noi_this, filename_states_this, filename_labels_this, seq, data_house)
+        read_threading(filename_depth_this, filename_dep_noi_this, filename_semantics_this, filename_states_this, filename_labels_this, seq, data_house)
 
     tf_training(data_house, files_num)
 

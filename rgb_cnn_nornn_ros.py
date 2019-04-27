@@ -24,8 +24,6 @@ input_paras = {
     "input2_dim": 4  # commands
 }
 
-commands_compose_each = 1  # Should be "input3_dim": 4  / 4
-
 input_dimension_x = input_paras["input1_dim_x"]
 input_dimension_y = input_paras["input1_dim_y"]
 input_channel = input_paras["input1_dim_channel"]

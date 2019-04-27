@@ -9,18 +9,23 @@ import time
 import gc
 import file_walker
 import os
-import cv2
-from multiprocessing import Pool
-import multiprocessing
+import threading
+
 thres_gaussian = 0.5
 thres_pepper = 0.2
 
+''' Parameters for Computer'''
+gpu_num = 2
+
 ''' Parameters for training '''
-''' Batch size defined in Parameters for RNN '''
+parts_num = 3
+epoch_num = 500
+iter_every_epochs = 100
+save_every_n_iter = 1
+devide_method = 1  # 0: devide by files number  1: devide by files size
+
 learning_rate = 1e-4
 regularization_para = 1e-7  # might have problem in rgb training, too many parameters
-epoch_num = 501
-save_every_n_epoch = 50
 training_times_simple_epoch = 2
 if_train_encoder = True
 if_continue_train = False
@@ -58,9 +63,21 @@ labels_num_one_line = 4
 # training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_deepth_img/deepth_rgb_semantics_depnoi/short/84"
 training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_deepth_noi_rotate"
 
+''' Shared data between threads (do not change) '''
+files_num = 0
+files_seq_array = []
+files_num_part = []
+reading_lock = 0  # 0: ready to read  1: reading  2: ready to feed  3: feeding
+exit_flag = False
+data_global = []
 
-''' Parameters for Computer'''
-gpu_num = 2
+file_path_depth = []
+file_path_dep_noi = []
+file_path_states = []
+file_path_labels = []
+files_size = []
+files_total_size = 0
+
 
 ''' Parameters for concat fully layers'''
 fully_paras = {
@@ -199,6 +216,12 @@ def draw_plots(x, y):
 
     plt.grid(True)
     plt.show()
+
+
+def get_file_size(filePath):
+    fsize = os.path.getsize(filePath)
+    fsize = fsize/float(1024*1024)
+    return round(fsize, 2)
 
 
 def generate_shuffled_array(start, stop, shuffle=True):
@@ -344,12 +367,9 @@ def read_others(data, filename, num_one_line):
             decrement = True
 
 
-def tf_training(data_house, file_num):
+def tf_training(coord, name):
     """
     Main training function
-    :param data_read_flags: flag to find stored data
-    :param data_house: where the data stores
-    :param file_num: total file number of input csvs
     :return:
     """
     ''' Calculate batch size '''
@@ -448,7 +468,7 @@ def tf_training(data_house, file_num):
         print "Start training"
         print "batch_size = " + str(batch_size)
         print "Total epoch num = " + str(epoch_num)
-        print "Will save every " + str(save_every_n_epoch) + " epoches"
+        print "Will save every " + str(save_every_n_iter) + " iterations"
 
         # set restore and save parameters
         if if_continue_train:
@@ -465,7 +485,6 @@ def tf_training(data_house, file_num):
         config = tf.ConfigProto(allow_soft_placement=True)  # log_device_placement=True
         # config.gpu_options.allow_growth = True  # only 300M memory
 
-
         with tf.Session(config=config) as sess:
             sess.run(tf.global_variables_initializer())  # initialze variables
             if if_continue_train:
@@ -476,58 +495,152 @@ def tf_training(data_house, file_num):
                 print "Partially restored from encoder !!"
 
             # start epochs
-            for epoch in range(epoch_num):
-                print "epoch: " + str(epoch)
-                t0 = time.time()
+            global parts_num
+            global reading_lock
 
-                seq_array = generate_shuffled_array(0, file_num)
-                ''' waiting for data '''
-                for file_seq in range(file_num):
-                    read_seq = seq_array[file_seq]
+            iter_num = int(epoch_num / iter_every_epochs)
+            for iter_seq in range(iter_num):
+                for part_seq in range(parts_num):
+                    # waiting for data
+                    while reading_lock != 2:
+                        time.sleep(2)
+                    reading_lock = 3
 
-                    noi_seq = np.random.random_integers(0, 1)  # 0 no noise, 1 with noise
-                    data_mat_pcl = data_house[read_seq][noi_seq]
-                    data_mat_command = data_house[read_seq][2]
-                    data_mat_label = data_house[read_seq][3]
-                    data_num = data_mat_pcl.shape[0]
+                    global data_global
 
-                    batch_num = int(data_num / batch_size)
+                    for epoch in range(iter_every_epochs):
+                        print "epoch: " + str(epoch)
+                        t0 = time.time()
 
-                    for training_time_this_file in range(training_times_simple_epoch):
-                        # get a random sequence for this file
-                        sequence = generate_shuffled_array(0, data_num, shuffle=True)
+                        files_num_this_iter = len(data_global)
 
-                        # start batches
-                        for batch_seq in range(batch_num):
-                            # print "batch" + str(batch_seq)
-                            # get data for this batch
-                            start_position = batch_seq * batch_size
-                            end_position = (batch_seq + 1) * batch_size
-                            data_pcl_batch = get_batch(sequence[start_position:end_position], data_mat_pcl)
-                            data_command_batch = get_batch(sequence[start_position:end_position], data_mat_command)
-                            label_batch = get_batch(sequence[start_position:end_position], data_mat_label)
+                        seq_array = generate_shuffled_array(0, files_num_this_iter)
+                        ''' waiting for data '''
+                        for file_seq in range(files_num_this_iter):
+                            read_seq = seq_array[file_seq]
 
-                            # label_to_draw = np.reshape(label_batch[:, 0], [batch_size])
-                            # draw_plots(np.arange(0, batch_size), label_to_draw)
+                            noi_seq = np.random.random_integers(0, 1)  # 0 no noise, 1 with noise
+                            data_mat_pcl = data_global[read_seq][noi_seq]
+                            data_mat_command = data_global[read_seq][2]
+                            data_mat_label = data_global[read_seq][3]
+                            data_num = data_mat_pcl.shape[0]
 
-                            # train
-                            sess.run(train_op, feed_dict={rgb_data: data_pcl_batch,
-                                                          line_data_2: data_command_batch, reference: label_batch})
+                            batch_num = int(data_num / batch_size)
 
-                            del data_pcl_batch
-                            del data_command_batch
-                            del label_batch
+                            for training_time_this_file in range(training_times_simple_epoch):
+                                # get a random sequence for this file
+                                sequence = generate_shuffled_array(0, data_num, shuffle=True)
 
-                    del data_mat_pcl
-                    del data_mat_command
-                    del data_mat_label
-                    del data_num
+                                # start batches
+                                for batch_seq in range(batch_num):
+                                    # print "batch" + str(batch_seq)
+                                    # get data for this batch
+                                    start_position = batch_seq * batch_size
+                                    end_position = (batch_seq + 1) * batch_size
+                                    data_pcl_batch = get_batch(sequence[start_position:end_position], data_mat_pcl)
+                                    data_command_batch = get_batch(sequence[start_position:end_position], data_mat_command)
+                                    label_batch = get_batch(sequence[start_position:end_position], data_mat_label)
 
-                print "Epoch " + str(epoch) + " finished!  Time: " + str(time.time() - t0)
+                                    # label_to_draw = np.reshape(label_batch[:, 0], [batch_size])
+                                    # draw_plots(np.arange(0, batch_size), label_to_draw)
 
-                if epoch % save_every_n_epoch == 0:
+                                    # train
+                                    sess.run(train_op, feed_dict={rgb_data: data_pcl_batch,
+                                                                  line_data_2: data_command_batch, reference: label_batch})
+
+                                    del data_pcl_batch
+                                    del data_command_batch
+                                    del label_batch
+
+                            del data_mat_pcl
+                            del data_mat_command
+                            del data_mat_label
+                            del data_num
+
+                        print "Epoch " + str(epoch) + " finished!  Time: " + str(time.time() - t0)
+
+                    # one part over
+                    reading_lock = 0
+
+                if iter_seq % save_every_n_iter == 0:
                     # save
-                    saver.save(sess, model_save_path + "simulation_cnn_rnn" + str(epoch) + ".ckpt")
+                    saver.save(sess, model_save_path + "simulation_cnn_rnn_iter" + str(iter_seq) + ".ckpt")
+
+            # finished exit the reading thread
+            global exit_flag
+            exit_flag = True
+
+
+def read_parts(coord, parts):
+    global exit_flag
+    global file_path_depth, file_path_dep_noi, file_path_states, file_path_labels, files_seq_array, files_num
+
+    while not coord.should_stop():
+        if exit_flag:
+            return
+
+        # set shuffled reading sequence array to each reading part
+        files_seq_array = generate_shuffled_array(0, files_num)
+        files_seq_parts = [[] for i in range(parts)]
+
+        if devide_method == 0:  # devide by number
+            first_num = 0
+            parts_cap = int(files_num / parts)
+            if parts_cap < 1:
+                print "too few files or too many parts!!!!!!"
+                return
+
+            for normal_parts_seq in range(parts - 1):
+                files_seq_parts[normal_parts_seq] = files_seq_array[first_num: first_num+parts_cap]
+                first_num += parts_cap
+            files_seq_parts[parts - 1] = files_seq_array[first_num: files_num]
+
+        else:  # devide by size
+            global files_total_size, files_size
+            size_cap = files_total_size / parts
+            part_seq_to_alloc = 0
+            size_now = 0
+            real_parts_num = 0
+            for rand_files_seq in range(files_num):
+                files_seq_parts[part_seq_to_alloc].append(files_seq_array[rand_files_seq])
+                size_now += files_size[files_seq_array[rand_files_seq]]
+                real_parts_num = part_seq_to_alloc + 1
+                if size_now > size_cap:
+                    part_seq_to_alloc += 1
+                    size_now = 0
+
+            # Correct the number of parts in case the files are too rare or too large
+            global parts_num
+            parts_num = real_parts_num
+            print "Real parts number after allocated = " + str(parts_num)
+
+        for part_seq in range(parts):
+
+            global reading_lock  # 0: ready to read  1: reading  2: ready to feed  3: feeding
+            while reading_lock != 0:
+                time.sleep(5)
+            reading_lock = 1
+
+            if exit_flag:
+                return
+
+            files_num_this_part = len(files_seq_parts[part_seq])
+            data_house = [0 for i in range(files_num_this_part)]
+
+            for file_seq_to_read in range(files_num_this_part):
+                file_this_seq = files_seq_parts[part_seq][file_seq_to_read]
+                filename_depth_this = file_path_depth[file_this_seq]
+                filename_states_this = file_path_states[file_this_seq]
+                filename_labels_this = file_path_labels[file_this_seq]
+                filename_dep_noi_this = file_path_dep_noi[file_this_seq]
+                read_threading(filename_depth_this, filename_dep_noi_this, filename_states_this, filename_labels_this,
+                               file_seq_to_read, data_house)
+
+            global data_global
+            data_global = data_house
+            reading_lock = 2
+            print "part " + str(part_seq) + " reading finished!  start training for this part"
+            del data_house
 
 
 if __name__ == '__main__':
@@ -535,10 +648,7 @@ if __name__ == '__main__':
     scan = file_walker.ScanFile(training_file_path)
     files = scan.scan_files()
 
-    file_path_depth = []
-    file_path_dep_noi = []
-    file_path_states = []
-    file_path_labels = []
+    global file_path_depth, file_path_dep_noi, file_path_states, file_path_labels, files_size, files_total_size
 
     file_type = '.csv'
     for file in files:
@@ -549,21 +659,21 @@ if __name__ == '__main__':
                 file_path_labels.append(file.replace('depth', 'label'))
                 # file_path_dep_noi.append(file.replace('depth', 'dep_noi'))
                 file_path_dep_noi.append(file.replace('depth_data', 'dep_noi_data'))
+                size_this_depth = get_file_size(file)
+                files_size.append(size_this_depth)  # add size
+                files_total_size += size_this_depth
 
     print "Found " + str(len(file_path_depth)) + " files to train!!!"
 
+    global files_num
     files_num = len(file_path_depth)
-    data_house = [0 for i in range(files_num)]
 
-    # Data Reading
-    for seq in range(files_num):
-        # pool.apply_async(test)
-        filename_depth_this = file_path_depth[seq]
-        filename_states_this = file_path_states[seq]
-        filename_labels_this = file_path_labels[seq]
-        filename_dep_noi_this = file_path_dep_noi[seq]
+    coord = tf.train.Coordinator()
+    name = "tf"
+    tf_thread = threading.Thread(target=tf_training, args=(coord, name))
+    tf_thread.start()
+    time.sleep(20)
 
-        read_threading(filename_depth_this, filename_dep_noi_this, filename_states_this, filename_labels_this, seq, data_house)
-
-    tf_training(data_house, files_num)
+    reading_thread = threading.Thread(target=read_parts, args=(coord, parts_num))
+    reading_thread.start()
 
