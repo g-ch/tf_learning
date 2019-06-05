@@ -7,6 +7,7 @@ import time
 import gc
 import file_walker
 import os
+import cv2
 
 ''' Parameters for training '''
 ''' Batch size defined in Parameters for RNN '''
@@ -395,6 +396,7 @@ def read_img_two_channels(data_img1, data_img2, filename_img1, filename_img2):  
         except OverflowError:
             maxInt = int(maxInt / 10)
             decrement = True
+
 
 
 def read_others(data, filename, num_one_line):

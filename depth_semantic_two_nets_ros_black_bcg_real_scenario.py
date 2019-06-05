@@ -417,6 +417,9 @@ if __name__ == '__main__':
 	rospy.Subscriber("/darknet_ros/bounding_boxes", BoundingBoxes, callBackSemantic)
 	cmd_pub = rospy.Publisher("smoother_cmd_vel", Twist, queue_size=10)
 	move_cmd = Twist()
+	status_pub = rospy.Publisher("/robot/status", Float64, queue_size=1)
+	status_flag = Float64()
+	status_flag.data = 0.0
 
 	''' Graph building '''
 	depth_data = tf.placeholder("float", name="depth_data", shape=[None, input_dimension_y, input_dimension_x,
@@ -503,11 +506,17 @@ if __name__ == '__main__':
 					# cv2.imshow("depth", depth_image[0,:,:,:])
 					# cv2.waitKey(5)
 
-					move_cmd.linear.x = results[0, 0] * 0.5  # 1.0
+					move_cmd.linear.x = results[0, 0] * 0.8  # 0.5
 
-					move_cmd.angular.z = (2 * results[0, 1] - 1) * 0.88  # 0.88
+					move_cmd.angular.z = (2 * results[0, 1] - 1) * 1.0 # 0.88
 
 				cmd_pub.publish(move_cmd)
+
+				# if the .py is running
+				status_flag.data += 0.1
+				if status_flag.data > 1000.0:
+					status_flag.data = 1000.0
+				status_pub.publish(status_flag)
 
 				# cv2.imshow("semantic image", semantic_image[0,:,:,:].astype(np.uint8))
 				# cv2.waitKey(5)

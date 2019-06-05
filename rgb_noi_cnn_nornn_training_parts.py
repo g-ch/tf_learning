@@ -18,7 +18,7 @@ thres_pepper = 0.2
 gpu_num = 2
 
 ''' Parameters for training '''
-parts_num = 2
+parts_num = 8
 epoch_num = 500
 iter_every_epochs = 100
 save_every_n_iter = 1
@@ -31,8 +31,8 @@ if_train_encoder = True
 if_continue_train = False
 if_regularization = True
 
-model_save_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/05_noi_test/"
-image_save_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/05_noi_test/"
+model_save_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/07_standard_noi/"
+image_save_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/07_standard_noi/"
 
 encoder_model = "/home/ubuntu/chg_workspace/rgb/model/encoder/01/model/simulation_autoencoder_900.ckpt"
 last_model = ""
@@ -60,7 +60,7 @@ img_channel = input_channel
 states_num_one_line = 17
 labels_num_one_line = 4
 
-training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_deepth_noi_rotate/test/rggb"
+training_file_path = "/home/ubuntu/chg_workspace/data/rggb_new_arranged"
 
 ''' Shared data between threads (do not change) '''
 files_num = 0

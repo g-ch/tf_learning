@@ -11,14 +11,11 @@ import file_walker
 import os
 import threading
 
-thres_gaussian = 0.5
-thres_pepper = 0.2
-
 ''' Parameters for Computer'''
 gpu_num = 2
 
 ''' Parameters for training '''
-parts_num = 3
+parts_num = 10
 epoch_num = 500
 iter_every_epochs = 100
 save_every_n_iter = 1
@@ -31,17 +28,17 @@ if_train_encoder = True
 if_continue_train = False
 if_regularization = True
 
-model_save_path = "/home/ubuntu/chg_workspace/depth/model/cnn_nornn/02_noi_rotate/model/"
-image_save_path = "/home/ubuntu/chg_workspace/depth/model/cnn_nornn/02_noi_rotate/plot/"
+model_save_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/07_standard_noi/"
+image_save_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/07_standard_noi/"
 
-encoder_model = "/home/ubuntu/chg_workspace/depth/model/encoder/01/model/simulation_autoencoder_500.ckpt"
+encoder_model = "/home/ubuntu/chg_workspace/rgb/model/encoder/01/model/simulation_autoencoder_900.ckpt"
 last_model = ""
 
 ''' Parameters for input vectors'''
 input_paras = {
     "input1_dim_x": 256,
     "input1_dim_y": 192,
-    "input1_dim_channel": 1,
+    "input1_dim_channel": 3,
     "input2_dim": 4  # commands
 }
 
@@ -60,8 +57,7 @@ img_channel = input_channel
 states_num_one_line = 17
 labels_num_one_line = 4
 
-# training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_deepth_img/deepth_rgb_semantics_depnoi/short/84"
-training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_deepth_noi_rotate/new/deepth_seemantic"
+training_file_path = "/home/ubuntu/chg_workspace/data/rggb_new_arranged"
 
 ''' Shared data between threads (do not change) '''
 files_num = 0
@@ -71,8 +67,8 @@ reading_lock = 0  # 0: ready to read  1: reading  2: ready to feed  3: feeding
 exit_flag = False
 data_global = []
 
-file_path_depth = []
-file_path_dep_noi = []
+file_path_rgb = []
+file_path_rgb_noi = []
 file_path_states = []
 file_path_labels = []
 files_size = []
@@ -254,7 +250,7 @@ def get_batch(seq, data):
     return result
 
 
-def read_threading(filename_img, filename_dep_noi, filename_state, filename_label, file_seq, data_house):
+def read_threading(filename_img, filename_rgb_noi, filename_state, filename_label, file_seq, data_house):
     """
     Read data thread function.
     :param filename_pcl:  pcl filename
@@ -265,9 +261,9 @@ def read_threading(filename_img, filename_dep_noi, filename_state, filename_labe
     :return:
     """
     print "Start reading..."
-    depth = open(filename_img, "r")
-    img_num = len(depth.readlines())
-    depth.close()
+    rgb = open(filename_img, "r")
+    img_num = len(rgb.readlines())
+    rgb.close()
     if img_num == 0:
         pass
     else:
@@ -275,10 +271,10 @@ def read_threading(filename_img, filename_dep_noi, filename_state, filename_labe
         read_img_threading(data_img, filename_img)
 
         data_img_noi = np.zeros([img_num, img_height, img_wid, img_channel])
-        read_img_threading(data_img_noi, filename_dep_noi)
+        read_img_threading(data_img_noi, filename_rgb_noi)
 
         name_to_print = os.path.splitext(filename_img)[0].split('/')[-1]
-        print "depth data " + str(name_to_print) + " get! img_num = " + str(img_num)
+        print "rgb data " + str(name_to_print) + " get! img_num = " + str(img_num)
 
         # Just to make sure the data is read correctly
         # compare_draw_3d_to_2d(data_pcl[10, :, :, :, 0], data_pcl[10, :, :, :, 0], 0, 1, 2, 12, 1)
@@ -562,7 +558,7 @@ def tf_training(coord, name):
                     # one part over
                     reading_lock = 0
 
-                if iter_seq % save_every_n_iter == 0:
+                if epoch % save_every_n_iter == 0:
                     # save
                     saver.save(sess, model_save_path + "simulation_cnn_rnn_iter" + str(iter_seq) + ".ckpt")
 
@@ -573,7 +569,7 @@ def tf_training(coord, name):
 
 def read_parts(coord, parts):
     global exit_flag
-    global file_path_depth, file_path_dep_noi, file_path_states, file_path_labels, files_seq_array, files_num
+    global file_path_rgb, file_path_rgb_noi, file_path_states, file_path_labels, files_seq_array, files_num
 
     while not coord.should_stop():
         if exit_flag:
@@ -629,11 +625,11 @@ def read_parts(coord, parts):
 
             for file_seq_to_read in range(files_num_this_part):
                 file_this_seq = files_seq_parts[part_seq][file_seq_to_read]
-                filename_depth_this = file_path_depth[file_this_seq]
+                filename_rgb_this = file_path_rgb[file_this_seq]
                 filename_states_this = file_path_states[file_this_seq]
                 filename_labels_this = file_path_labels[file_this_seq]
-                filename_dep_noi_this = file_path_dep_noi[file_this_seq]
-                read_threading(filename_depth_this, filename_dep_noi_this, filename_states_this, filename_labels_this,
+                filename_rgb_noi_this = file_path_rgb_noi[file_this_seq]
+                read_threading(filename_rgb_this, filename_rgb_noi_this, filename_states_this, filename_labels_this,
                                file_seq_to_read, data_house)
 
             global data_global
@@ -648,25 +644,25 @@ if __name__ == '__main__':
     scan = file_walker.ScanFile(training_file_path)
     files = scan.scan_files()
 
-    global file_path_depth, file_path_dep_noi, file_path_states, file_path_labels, files_size, files_total_size
+    global file_path_rgb, file_path_rgb_noi, file_path_states, file_path_labels, files_size, files_total_size
 
     file_type = '.csv'
     for file in files:
         if os.path.splitext(file)[1] == file_type:
-            if os.path.splitext(file)[0].split('/')[-1].split('_')[0] == 'depth':
-                file_path_depth.append(file)
-                file_path_states.append(file.replace('depth', 'uav'))
-                file_path_labels.append(file.replace('depth', 'label'))
-                # file_path_dep_noi.append(file.replace('depth', 'dep_noi'))
-                file_path_dep_noi.append(file.replace('depth_data', 'dep_noi_data'))
-                size_this_depth = get_file_size(file)
-                files_size.append(size_this_depth)  # add size
-                files_total_size += size_this_depth
+            if os.path.splitext(file)[0].split('/')[-1].split('_')[0] == 'rgb'\
+                    and os.path.splitext(file)[0].split('/')[-1].split('_')[1] == 'data':
+                file_path_rgb.append(file)
+                file_path_states.append(file.replace('rgb', 'uav'))
+                file_path_labels.append(file.replace('rgb', 'label'))
+                file_path_rgb_noi.append(file.replace('rgb', 'rgb_noi'))
+                size_this_rgb = get_file_size(file)
+                files_size.append(size_this_rgb)  # add size
+                files_total_size += size_this_rgb
 
-    print "Found " + str(len(file_path_depth)) + " files to train!!!"
+    print "Found " + str(len(file_path_rgb)) + " files to train!!!"
 
     global files_num
-    files_num = len(file_path_depth)
+    files_num = len(file_path_rgb)
 
     coord = tf.train.Coordinator()
     name = "tf"

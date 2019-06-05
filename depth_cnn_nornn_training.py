@@ -28,8 +28,8 @@ if_train_encoder = True
 if_continue_train = False
 if_regularization = True
 
-model_save_path = "/home/ubuntu/chg_workspace/depth/model/cnn_nornn/01/model/"
-image_save_path = "/home/ubuntu/chg_workspace/depth/model/cnn_nornn/01/plot/"
+model_save_path = "/home/ubuntu/chg_workspace/depth/model/cnn_nornn/03_origin_without_noi/model/"
+image_save_path = "/home/ubuntu/chg_workspace/depth/model/cnn_nornn/03_origin_without_noi/plot/"
 
 encoder_model = "/home/ubuntu/chg_workspace/depth/model/encoder/01/model/simulation_autoencoder_500.ckpt"
 last_model = ""
@@ -58,7 +58,7 @@ states_num_one_line = 17
 labels_num_one_line = 4
 
 # training_file_path = "/home/ubuntu/chg_workspace/data/yaw_in_map/rnn_rnn_train"
-training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_deepth_img/deepth_rgb_seemantics/gazebo_rate_092/yhz/short/09"
+training_file_path = "/home/ubuntu/chg_workspace/data/deepth_without_noi"
 
 ''' Parameters for Computer'''
 gpu_num = 2

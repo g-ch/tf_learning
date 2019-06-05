@@ -163,25 +163,32 @@ if __name__ == "__main__":
     # print data_mat[2,:,:,:,0]
 
     # file_name = "/home/ubuntu/chg_workspace/data/new_csvs/backward_unable/chg_route1_trial1/pcl_data_2018_12_12_14:03:47.csv"
-    file_name = "/home/ubuntu/catkin_ws/rgb_data_2019_04_24_18:44:39.csv"
+    # file_name = "/home/ubuntu/catkin_ws/rgb_noi_data_2019_05_21_15:06:37.csv"
+    # file_name = "/home/ubuntu/chg_workspace/data/new_map_with_deepth_noi_rotate/new/long/02/semantics_2019_05_07_19:41:02.csv"
+
+    file_name = "/home/ubuntu/chg_workspace/data/deepth_without_noi/depth_data_2019_03_14_14:28:57.csv"
 
     depth = open(file_name, "r")
     img_num = len(depth.readlines())
     depth.close()
 
-    img_channel = 3
+    img_channel = 1
+    if "rgb" in file_name:
+        img_channel = 3
     img_height_depth = 192
     img_wid_depth = 256
     data_img = np.zeros([img_num, img_height_depth, img_wid_depth, img_channel], dtype=np.uint8)
 
     print ("start of reading ...")
-    read_rgb_img(file_name, data_img)
-    # read_img_threading(data_img, file_name)
+    if "rgb" in file_name:
+        read_rgb_img(file_name, data_img)
+    else:
+        read_img_threading(data_img, file_name)
     print ("end of reading ...")
 
     for i in range(img_num):
         cv2.imshow("image read", data_img[i, :, :, :])
-        cv2.waitKey()
+        cv2.waitKey(-1)
 
     # clouds = open(file_name, "r")
     # img_num = len(clouds.readlines())

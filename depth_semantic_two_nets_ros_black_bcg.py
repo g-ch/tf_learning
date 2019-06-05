@@ -13,10 +13,10 @@ import cv2
 
 commands_compose_each = 1  # Should be "input3_dim": 8  / 4
 
-model_path = "/home/ubuntu/chg_workspace/depth_semantic/model/two_nets/model/depth_semantic_two_nets/model/simulation_cnn_rnn250.ckpt"
+# model_path = "/home/ubuntu/chg_workspace/depth_semantic/model/two_nets/model/depth_semantic_two_nets/model/simulation_cnn_rnn250.ckpt"
 #model_path = "/home/ubuntu/chg_workspace/depth_semantic/model/two_nets/model/depth_noi_semantic/model/simulation_cnn_rnn400.ckpt"
 #model_path = "/home/ubuntu/chg_workspace/depth_semantic/model/two_nets/model/depth_noi_rotate_semantic_gx/simulation_cnn_rnn400.ckpt"
-# model_path = "/home/ubuntu/chg_workspace/depth_semantic/model/two_nets/model/depth_noi_rotate_semantic_gx_02/simulation_cnn_rnn400.ckpt"
+model_path = "/home/ubuntu/chg_workspace/depth_semantic/model/two_nets/model/depth_noi_rotate_semantic_gx_02/simulation_cnn_rnn400.ckpt"
 
 
 ''' Parameters for input vectors'''
@@ -271,10 +271,6 @@ def callBackSemantic(objects):
             label = 5
         elif box.Class == 'traffic light':
             label = 5
-        elif box.Class == 'window':
-            label = 2
-        elif box.Class == 'door':
-            label = 2
         else:
             label = 3
         if label < 4:
@@ -306,6 +302,7 @@ def callBackSemantic(objects):
         # cv2.imshow("semantic", semantic_image)
         # cv2.waitKey(5)
 
+
 def callBackDepth(img):
     try:
         cv_image = bridge.imgmsg_to_cv2(img)
@@ -317,13 +314,14 @@ def callBackDepth(img):
     # cv2.imshow("rgb", depth_image_list)
     # cv2.waitKey(5)
     depth_image = np.array(depth_image_list).reshape(1, img_height, img_wid, 1)
-    depth_image[depth_image > 6.3] = 6.3
-    depth_image[np.isnan(depth_image)] = 6.3
-    depth_image = depth_image * 40
+    depth_image[depth_image > 4.5] = 0.0
+    depth_image[np.isnan(depth_image)] = 0.0
+    depth_image = depth_image * 56
     depth_image = np.trunc(depth_image[:, :, :, :])
     new_msg_received = True
     # image_data[:, :, :, 0] = depth_image[:, :, :, 0]
     # image_data[:, :, :, 1] = semantic_image[:, :, :, 0]
+
 
 
 def callBackDeltYaw(data):
@@ -401,6 +399,9 @@ if __name__ == '__main__':
     rospy.Subscriber("/darknet_ros/bounding_boxes", BoundingBoxes, callBackSemantic)
     cmd_pub = rospy.Publisher("/mobile_base/commands/velocity", Twist, queue_size=10)
     move_cmd = Twist()
+    status_pub = rospy.Publisher("/robot/status", Float64, queue_size=1)
+    status_flag = Float64()
+    status_flag.data = 0.0
 
     ''' Graph building '''
     depth_data = tf.placeholder("float", name="depth_data", shape=[None, input_dimension_y, input_dimension_x,
@@ -482,11 +483,17 @@ if __name__ == '__main__':
                 # cv2.imshow("rgb2", depth_image[0,:,:,:])
                 # cv2.waitKey(5)
 
-                move_cmd.linear.x = results[0, 0] * 0.7  # 1.0
+                move_cmd.linear.x = results[0, 0] * 0.8  # 1.0
 
-                move_cmd.angular.z = (2 * results[0, 1] - 1) * 0.88  # 0.88
+                move_cmd.angular.z = (2 * results[0, 1] - 1) * 1.0  # 0.88
 
                 cmd_pub.publish(move_cmd)
+
+                # if the .py is running
+                status_flag.data += 0.1
+                if status_flag.data > 1000.0:
+                    status_flag.data = 1000.0
+                status_pub.publish(status_flag)
 
                 # cv2.imshow("semantic image", semantic_image[0,:,:,:].astype(np.uint8))
                 # cv2.waitKey(5)

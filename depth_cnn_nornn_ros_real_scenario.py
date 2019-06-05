@@ -483,6 +483,9 @@ if __name__ == '__main__':
     rospy.Subscriber("joy", Joy, joyCallback)
     cmd_pub = rospy.Publisher("smoother_cmd_vel", Twist, queue_size=10)
     move_cmd = Twist()
+    status_pub = rospy.Publisher("/robot/status", Float64, queue_size=1)
+    status_flag = Float64()
+    status_flag.data = 0.0
 
     ''' Graph building '''
     rgb_data = tf.placeholder("float", name="rgb_data", shape=[None, input_dimension_y, input_dimension_x,
@@ -564,9 +567,15 @@ if __name__ == '__main__':
 
                     move_cmd.linear.x = results[0, 0] * 0.8  # 1.0 # 0.1
 
-                    move_cmd.angular.z = (2 * results[0, 1] - 1) * 0.88  # 0.88
+                    move_cmd.angular.z = (2 * results[0, 1] - 1) * 1.0  # 0.88
 
                 cmd_pub.publish(move_cmd)
+
+                # if the .py is running
+                status_flag.data += 0.1
+                if status_flag.data > 1000.0:
+                    status_flag.data = 1000.0
+                status_pub.publish(status_flag)
 
                 print "data3_to_feed: ", data3_to_feed
                 # if move_cmd.linear.x > 0.01:

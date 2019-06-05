@@ -2,21 +2,27 @@ import tensorflow as tf
 import math
 import numpy as np
 import rospy
+import sensor_msgs.point_cloud2 as pc2
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 from std_msgs.msg import Float64
 from nav_msgs.msg import Odometry
-from darknet_ros_msgs.msg import BoundingBoxes
 from geometry_msgs.msg import Twist
 import matplotlib.pyplot as plt
 import cv2
+import time
+import csv
+import random
+from scipy.ndimage.filters import maximum_filter
+
+fileobj = open('test_depth.csv', 'wb')
+file_writer = csv.writer(fileobj)
 
 commands_compose_each = 1  # Should be "input3_dim": 8  / 4
 
-model_path = "/home/ubuntu/chg_workspace/depth_semantic/model/two_nets/model/depth_semantic_two_nets/model/simulation_cnn_rnn250.ckpt"
-#model_path = "/home/ubuntu/chg_workspace/depth_semantic/model/two_nets/model/depth_noi_semantic/model/simulation_cnn_rnn400.ckpt"
-#model_path = "/home/ubuntu/chg_workspace/depth_semantic/model/two_nets/model/depth_noi_rotate_semantic_gx/simulation_cnn_rnn400.ckpt"
-# model_path = "/home/ubuntu/chg_workspace/depth_semantic/model/two_nets/model/depth_noi_rotate_semantic_gx_02/simulation_cnn_rnn400.ckpt"
+# model_path = "/home/ubuntu/chg_workspace/depth/model/cnn_nornn/01_noi_rotate/model/simulation_cnn_rnn_iter3.ckpt"
+model_path = "/home/ubuntu/chg_workspace/depth/model/cnn_nornn/02_noi_rotate/model/simulation_cnn_rnn_iter3.ckpt"
+
 
 
 ''' Parameters for input vectors'''
@@ -25,12 +31,6 @@ input_paras = {
     "input1_dim_y": 192,
     "input1_dim_channel": 1,
     "input2_dim": 4  # commands
-}
-
-input_semantic_paras = {
-    "input_dim_x": 256,
-    "input_dim_y": 192,
-    "input_dim_channel": 1,
 }
 
 commands_compose_each = 1  # Should be "input3_dim": 4  / 4
@@ -46,7 +46,7 @@ img_channel = input_channel
 ''' Parameters for concat fully layers'''
 fully_paras = {
     "raw_batch_size": 20,
-    "input_len": 576,
+    "input_len": 544,
     "layer1_len": 256,
     "layer2_len": 64,
     "output_len": 2
@@ -55,8 +55,7 @@ fully_paras = {
 ''' Parameters for concat values'''
 concat_paras = {
     "dim1": 512,  # should be the same as encoder out dim
-    "dim2": 32,  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
-    "dim3": 32   # for semantic info
+    "dim2": 32  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
 }
 
 ''' Parameters for CNN encoder'''
@@ -77,23 +76,6 @@ encoder_para = {
     "out_dia": 12288
 }
 
-''' Parameters for semantic part'''
-semantic_para = {
-    "kernel1": 5,
-    "stride1": 2,
-    "channel1": 8,
-    "pool1": 2,
-    "kernel2": 3,
-    "stride2": 2,
-    "channel2": 16,
-    "pool2": 2,
-    "kernel3": 3,
-    "stride3": 2,
-    "channel3": 32,
-    "out_dia": 1536,
-    "fully1": 64,
-    "fully2": 32
-}
 
 ''' Parameters for ros node '''
 new_msg_received = False
@@ -112,14 +94,13 @@ yaw_backward = 0.0
 yaw_leftward = 0.0
 yaw_rightward = 0.0
 
-semantic_img_height = 480
-semantic_img_width = 640
-
-# image_data = np.zeros([1, img_height, img_wid, img_channel])
-depth_image = np.zeros([1, img_height, img_wid, 1])  # bgr in opencv form
-semantic_origin_size = np.zeros([semantic_img_height, semantic_img_width])
-semantic_image = np.zeros([1, img_height, img_wid, 1])
+rgb_image = np.zeros([1, img_height, img_wid, img_channel])  # bgr in opencv form
 bridge = CvBridge()
+
+
+'''threshold for deciding if adding noise to the images'''
+thres_gaussian = 0.5
+thres_pepper = 0.2
 
 
 def conv2d_relu(x, kernel_shape, bias_shape, strides):
@@ -189,52 +170,6 @@ def encoder(x):
             return conv4_1
 
 
-def semantic_networks(x):
-    print "building semantic network.."
-    k1 = semantic_para["kernel1"]
-    s1 = semantic_para["stride1"]
-    d1 = semantic_para["channel1"]
-    p1 = semantic_para["pool1"]
-
-    k2 = semantic_para["kernel2"]
-    s2 = semantic_para["stride2"]
-    d2 = semantic_para["channel2"]
-    p2 = semantic_para["pool2"]
-
-    k3 = semantic_para["kernel3"]
-    s3 = semantic_para["stride3"]
-    d3 = semantic_para["channel3"]
-
-    out_dia = semantic_para["out_dia"]
-    f1 = semantic_para["fully1"]
-    f2 = semantic_para["fully2"]
-
-    with tf.variable_scope("semantic"):
-        with tf.variable_scope("conv1"):
-            conv1 = conv2d_relu(x, [k1, k1, input_semantic_paras["input_dim_channel"], d1], [d1], [1, s1, s1, 1])
-
-        with tf.variable_scope("pool1"):
-            max_pool1 = max_pool(conv1, [1, p1, p1, 1], [1, p1, p1, 1])
-
-        with tf.variable_scope("conv2"):
-            conv2 = conv2d_relu(max_pool1, [k2, k2, d1, d2], [d2], [1, s2, s2, 1])
-
-        with tf.variable_scope("pool2"):
-            max_pool2 = max_pool(conv2, [1, p2, p2, 1], [1, p2, p2, 1])
-
-        with tf.variable_scope("conv3"):
-            conv3 = conv2d_relu(max_pool2, [k3, k3, d2, d3], [d3], [1, s3, s3, 1])
-
-        with tf.variable_scope("fully1"):
-            vector_flat = tf.reshape(conv3, [-1, out_dia])
-            fully1 = relu_layer(vector_flat, out_dia, f1)
-
-        with tf.variable_scope("fully2"):
-            fully2 = relu_layer(fully1, f1, f2)
-
-            return fully2
-
-
 class Networkerror(RuntimeError):
     """
     Error print
@@ -243,87 +178,148 @@ class Networkerror(RuntimeError):
         self.args = arg
 
 
-def callBackSemantic(objects):
-    global semantic_image, semantic_origin_size
-    semantic_image[:, :, :, :] = 0
-    semantic_origin_size[:, :] = 0
-
-    for box in objects.bounding_boxes:
-        label = 0
-        print box.Class
-        if box.Class == 'person':
-            label = 7
-        elif box.Class == 'toothbrush':
-            label = 7
-        elif box.Class == 'cat':
-            label = 6
-        elif box.Class == 'dog':
-            label = 6
-        elif box.Class == 'laptop':
-            label = 5
-        elif box.Class == 'bed':
-            label = 5
-        elif box.Class == 'chair':
-            label = 5
-        elif box.Class == 'diningtable':
-            label = 5
-        elif box.Class == 'sofa':
-            label = 5
-        elif box.Class == 'traffic light':
-            label = 5
-        elif box.Class == 'window':
-            label = 2
-        elif box.Class == 'door':
-            label = 2
-        else:
-            label = 3
-        if label < 4:
-            continue
-        range_x_min = box.xmin
-        range_x_max = box.xmax
-        range_y_min = box.ymin
-        range_y_max = box.ymax
-
-        if range_x_min > semantic_img_width - 1:
-            range_x_min = semantic_img_width - 1
-        if range_x_min < 0:
-            range_x_min = 0
-        if range_x_max > semantic_img_width - 1:
-            range_x_max = semantic_img_width - 1
-        if range_x_max < 0:
-            range_x_max = 0
-
-        # for i in range(range_y_min - 1, range_y_max):
-        #     for j in range(range_x_min - 1, range_x_max):
-        #         semantic_origin_size[i, j] = np.trunc(label * 32)
-
-        semantic_origin_size[range_y_min - 1:range_y_max, range_x_min - 1:range_x_max] = np.trunc(label * 32)
-
-        # semantic_list = np.array(semantic_origin_size).reshape(1, img_height, img_wid, 1)
-
-        semantic_image_list = cv2.resize(semantic_origin_size, (img_wid, img_height), interpolation=cv2.INTER_AREA)
-        semantic_image = np.array(semantic_image_list).reshape(1, img_height, img_wid, 1)
-        # cv2.imshow("semantic", semantic_image)
-        # cv2.waitKey(5)
-
 def callBackDepth(img):
     try:
         cv_image = bridge.imgmsg_to_cv2(img)
     except CvBridgeError as e:
         print(e)
 
-    global depth_image, new_msg_received
-    depth_image_list = cv2.resize(cv_image, (img_wid, img_height), interpolation=cv2.INTER_AREA)
-    # cv2.imshow("rgb", depth_image_list)
+    global rgb_image, new_msg_received
+
+    image_mm = cv2.resize(cv_image, (img_wid, img_height), interpolation=cv2.INTER_AREA)
+
+    rgb_image_list = image_mm * 0.001  # mm -> m
+    rgb_image_list[rgb_image_list > 4.5] = 0.0
+    rgb_image_list[np.isnan(rgb_image_list)] = 0.0
+
+    image_mm = rgb_image_list * 1000
+
+    rgb_image_uint = np.trunc(image_mm * 56).astype(np.uint8)
+    # rgb_image_uint = np.array(rgb_image_uint).reshape(1, img_height, img_wid, img_channel)
+
+    rgb_image = np.array(rgb_image_uint).reshape(1, img_height, img_wid, img_channel)
+
+    # gaussian random noise generation: add to the origin image with the unit of mm
+    # sigma_l_mm = np.ones(image_mm.shape) * 3.1
+
+    # image_with_contour_noise = rgb_image_uint[0, :, :, :]
+    #
+    # cv2.imshow("img_origin_unit8", rgb_image_uint[0, :, :, :])
     # cv2.waitKey(5)
-    depth_image = np.array(depth_image_list).reshape(1, img_height, img_wid, 1)
-    depth_image[depth_image > 6.3] = 6.3
-    depth_image[np.isnan(depth_image)] = 6.3
-    depth_image = depth_image * 40
-    depth_image = np.trunc(depth_image[:, :, :, :])
+    #
+    # if np.random.random_sample() < thres_gaussian:
+    #     image_with_contour_noise = ContourGaussianNoise(image_mm, rgb_image_uint, contour_width=5)
+    #
+    # if np.random.random_sample() < thres_pepper:
+    #     pepper_percentage = np.random.random_sample() / 2
+    #     SaltAndPepper(image_with_contour_noise, pepper_percentage)
+    #
+    # cv2.imshow("depth contour", image_with_contour_noise)
+    # cv2.waitKey(5)
+
+    # line_to_save_as_csv = np.zeros([img_height * img_wid, 1])
+    # mat_to_save = np.zeros([img_height * img_wid, 1])
+    # for i in range(img_height):
+    #     for j in range(img_wid):
+    #         line_to_save_as_csv[i * img_wid + j, 0] = rgb_image[0, i, j, 0]
+    # mat_to_save = np.concatenate((mat_to_save, line_to_save_as_csv), axis=0)
+    # with open('depth_short12.csv', 'wb') as depth_csv:
+    #     np.savetxt(depth_csv, mat_to_save, delimiter=',')
+    # file_writer.writerow(line_to_save_as_csv, delimiter=',')
+
+    # cv2.imshow("depth", rgb_image)
+    # cv2.waitKey(5)
     new_msg_received = True
-    # image_data[:, :, :, 0] = depth_image[:, :, :, 0]
-    # image_data[:, :, :, 1] = semantic_image[:, :, :, 0]
+
+
+def ContourGaussianNoise(src, rgb_image_uint8, contour_width):
+    image_mm = src
+    # parameters for the gaussian noise at the contour
+    theta_mean = 3.1415926 / 6
+    sigma_z_mm = 1.5 - 0.5 * image_mm + 0.3 * image_mm * image_mm \
+                 + 0.1 * np.power(image_mm, 1.5) * theta_mean * theta_mean \
+                 / (3.1415 - theta_mean) * (3.1415 - theta_mean)
+
+    randoms_normal = np.random.randn(image_mm.shape[0], image_mm.shape[1])
+
+    noise_z_mm = randoms_normal * sigma_z_mm + image_mm
+    noise_z_m_uint8 = np.trunc(noise_z_mm * 0.001 * 40).astype(np.uint8)
+
+    # noise_z_mm = np.exp(-randoms / (2 * sigma_z_mm * sigma_z_mm))
+
+    # reshape the image in the unit mm
+    # image_mm = np.array(image_mm).reshape(1, img_height, img_wid, img_channel)
+
+    # find contours
+    contours = cv2.Canny(rgb_image_uint8[0, :, :, :], 50, 500)
+
+    _, contours_bin, hierarchy = cv2.findContours(contours, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    # contours = cv2.findContours(rgb_image_uint[0, :, :, :])
+
+    cv2.drawContours(contours, contours_bin, -1, 255, 8)
+
+    # the contours with noise
+    contour_wider_uint8 = cv2.bitwise_and(noise_z_m_uint8, contours)
+
+    # contour_wider_noise = contour_wider_uint8 * noise_z_mm
+    # contour_wider_noise = np.trunc(contour_wider_noise * 0.001 * 40).astype(np.uint8)
+
+    contour_not = cv2.bitwise_not(contour_wider_uint8)
+
+    image_without_contour = cv2.bitwise_and(contour_not, rgb_image_uint8[0, :, :, 0])
+
+    image_with_contour_noise = image_without_contour + contour_wider_uint8
+
+    return image_with_contour_noise
+
+
+# def SaltAndPepper(src, percetage):
+#     SP_NoiseNum = int(percetage * src.shape[0] * src.shape[1])
+#     for i in range(SP_NoiseNum):
+#         randX = random.randint(0, src.shape[0]-1)
+#         randY = random.randint(0, src.shape[1]-1)
+#         if np.random.random_integers(0, 1) == 0:
+#             src[randX, randY] = 0
+#         else:
+#             src[randX, randY] = 255
+#     return src
+
+
+def SaltAndPepper(src, percetage):
+    SP_NoiseNum = int(percetage * src.shape[0] * src.shape[1])
+    for i in range(SP_NoiseNum):
+        randX = np.random.normal(loc=0.0, scale=img_height/24, size=None)
+        randY = np.random.normal(loc=0.0, scale=img_wid/24, size=None)
+
+        randX = np.maximum(randX, - img_height / 2)
+        randX = np.minimum(randX, img_height / 2)
+
+        randY = np.maximum(randY, - img_wid / 2)
+        randY = np.minimum(randY, img_wid / 2)
+
+        margin_y = np.random.randint(0, int(img_wid))
+        margin_x = np.random.randint(0, int(img_height))
+
+        if randX <= 0:
+            randX = img_height + randX
+        if randY <= 0:
+            randY = img_wid + randY
+        randX = int(randX)
+        randY = int(randY)
+
+        if np.random.random_integers(0, 1) == 0:
+            src[randX, margin_y] = 0
+
+        # if np.random.random_integers(0, 1) == 0:
+        #     src[randX, margin_y] = 0
+
+        if np.random.random_integers(0, 1) == 0:
+            src[margin_x, randY] = 0
+
+        # if np.random.random_integers(0, 1) == 0:
+        #     src[margin_x, randY] = 0
+
+    return src
 
 
 def callBackDeltYaw(data):
@@ -398,24 +394,19 @@ if __name__ == '__main__':
     rospy.Subscriber("/radar/delt_yaw", Float64, callBackDeltYaw)
     rospy.Subscriber("/radar/current_yaw", Float64, callBackCurrentYaw)
     rospy.Subscriber("/odom", Odometry, callBackOdom)
-    rospy.Subscriber("/darknet_ros/bounding_boxes", BoundingBoxes, callBackSemantic)
     cmd_pub = rospy.Publisher("/mobile_base/commands/velocity", Twist, queue_size=10)
     move_cmd = Twist()
+    status_pub = rospy.Publisher("/robot/status", Float64, queue_size=1)
+    status_flag = Float64()
+    status_flag.data = 0.0
 
     ''' Graph building '''
-    depth_data = tf.placeholder("float", name="depth_data", shape=[None, input_dimension_y, input_dimension_x,
-                                                                   input_channel])
-    semantic_data = tf.placeholder("float", name="semantic_data", shape=[None, input_semantic_paras["input_dim_y"],
-                                                                         input_semantic_paras["input_dim_x"],
-                                                                         input_semantic_paras["input_dim_channel"]])
-
+    rgb_data = tf.placeholder("float", name="rgb_data", shape=[None, input_dimension_y, input_dimension_x,
+                                                               input_channel])
     line_data_2 = tf.placeholder("float", name="line_data", shape=[None, input_paras["input2_dim"]])  # commands
 
-    # Semantic data
-    semantic_vector_flat = semantic_networks(semantic_data)
-
-    # encoder
-    encode_vector = encoder(depth_data)
+    # 3D CNN
+    encode_vector = encoder(rgb_data)
     print "encoder built"
     # To flat vector
     encode_vector_flat = tf.reshape(encode_vector, [-1, encoder_para["out_dia"]])
@@ -435,7 +426,7 @@ if __name__ == '__main__':
                                         concat_paras["dim2"])
 
     # Concat, Note: dimension parameter should be 1, considering batch size
-    concat_vector = tf.concat([map_data_line, commands_data_line, semantic_vector_flat], 1)
+    concat_vector = tf.concat([map_data_line, commands_data_line], 1)
     print "concat complete"
 
     # Add a fully connected layer for all input
@@ -458,7 +449,7 @@ if __name__ == '__main__':
     variables_to_restore = tf.contrib.framework.get_variables_to_restore()
     restorer = tf.train.Saver(variables_to_restore)
 
-    rate = rospy.Rate(20)  # 20hz
+    rate = rospy.Rate(100)  # 100hz
 
     config = tf.ConfigProto(allow_soft_placement=True)  # log_device_placement=True
     config.gpu_options.allow_growth = True  # only 300M memory
@@ -478,21 +469,21 @@ if __name__ == '__main__':
                 data3_yaw_rightward = np.ones([1, commands_compose_each]) * yaw_rightward
                 data3_to_feed = np.concatenate([data3_yaw_forward, data3_yaw_backward, data3_yaw_leftward, data3_yaw_rightward], axis=1)
 
-                results = sess.run(result, feed_dict={depth_data: depth_image, semantic_data: semantic_image, line_data_2: data3_to_feed})
-                # cv2.imshow("rgb2", depth_image[0,:,:,:])
+                results = sess.run(result, feed_dict={rgb_data: rgb_image, line_data_2: data3_to_feed})
+                # cv2.imshow("rgb2", rgb_image[0,:,:,:])
                 # cv2.waitKey(5)
 
-                move_cmd.linear.x = results[0, 0] * 0.7  # 1.0
+                move_cmd.linear.x = results[0, 0] * 0.8  # 1.0
 
-                move_cmd.angular.z = (2 * results[0, 1] - 1) * 0.88  # 0.88
+                move_cmd.angular.z = (2 * results[0, 1] - 1) * 1.0  # 0.88
 
                 cmd_pub.publish(move_cmd)
 
-                # cv2.imshow("semantic image", semantic_image[0,:,:,:].astype(np.uint8))
-                # cv2.waitKey(5)
-
-                # initialize
-                semantic_image = np.zeros([1, img_height, img_wid, 1])
+                # if the .py is running
+                status_flag.data += 0.1
+                if status_flag.data > 1000.0:
+                    status_flag.data = 1000.0
+                status_pub.publish(status_flag)
 
                 # print yaw_forward, yaw_backward, yaw_leftward, yaw_rightward
                 print data3_to_feed

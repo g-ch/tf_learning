@@ -19,8 +19,8 @@ if_train_encoder = True
 if_continue_train = False
 if_regularization = True
 
-model_save_path = "/home/ubuntu/chg_workspace/depth_semantic/model/two_nets/model/depth_noi_semantic/model/"
-image_save_path = "/home/ubuntu/chg_workspace/depth_semantic/model/two_nets/model/depth_noi_semantic/plot/"
+model_save_path = "/home/ubuntu/chg_workspace/depth_semantic/model/two_nets/model/test/"
+image_save_path = "/home/ubuntu/chg_workspace/depth_semantic/model/two_nets/model/test/"
 
 encoder_model = "/home/ubuntu/chg_workspace/depth/model/encoder/01/model/simulation_autoencoder_500.ckpt"
 
@@ -37,7 +37,7 @@ input_paras = {
 input_semantic_paras = {
     "input_dim_x": 256,
     "input_dim_y": 192,
-    "input_dim_channel": 1,
+    "input_dim_channel": 1
 }
 
 commands_compose_each = 1  # Should be "input3_dim": 4  / 4
@@ -55,7 +55,7 @@ img_channel = input_channel
 states_num_one_line = 17
 labels_num_one_line = 4
 
-training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_deepth_noi_rotate/test"
+training_file_path = "/home/ubuntu/chg_workspace/data/new_map_with_deepth_noi_rotate/test/deepth_seemantic"
 
 ''' Parameters for Computer'''
 gpu_num = 2
@@ -63,7 +63,7 @@ gpu_num = 2
 ''' Parameters for concat fully layers'''
 fully_paras = {
     "raw_batch_size": 20,
-    "input_len": 576,
+    "input_len": 544,  #576,
     "layer1_len": 256,
     "layer2_len": 64,
     "output_len": 2
@@ -71,7 +71,7 @@ fully_paras = {
 
 ''' Parameters for concat values'''
 concat_paras = {
-    "dim1": 512,  # should be the same as encoder out dim
+    "dim1": 480,  # 512,  # should be the same as encoder out dim
     "dim2": 32,  # dim1 + dim2 + dim3 should be input_len of the rnn, for line vector
     "dim3": 32   # for semantic info
 }

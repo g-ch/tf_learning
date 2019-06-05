@@ -14,7 +14,9 @@ import time
 
 commands_compose_each = 1  # Should be "input3_dim": 8  / 4
 
-model_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/02_standard_data/model/simulation_cnn_rnn200.ckpt"
+# model_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/02_standard_data/model/simulation_cnn_rnn200.ckpt"
+# model_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/06_noi_gx/simulation_cnn_rnn_iter3.ckpt"
+model_path = "/home/ubuntu/chg_workspace/rgb/model/cnn_nornn/07_standard_noi/simulation_cnn_rnn_iter3.ckpt"
 
 ''' Parameters for input vectors'''
 input_paras = {
@@ -250,6 +252,9 @@ if __name__ == '__main__':
     rospy.Subscriber("/odom", Odometry, callBackOdom)
     cmd_pub = rospy.Publisher("/mobile_base/commands/velocity", Twist, queue_size=10)
     move_cmd = Twist()
+    status_pub = rospy.Publisher("/robot/status", Float64, queue_size=1)
+    status_flag = Float64()
+    status_flag.data = 0.0
 
     ''' Graph building '''
     rgb_data = tf.placeholder("float", name="rgb_data", shape=[None, input_dimension_y, input_dimension_x,
@@ -324,11 +329,17 @@ if __name__ == '__main__':
                 # cv2.imshow("rgb2", rgb_image[0,:,:,:])
                 # cv2.waitKey(5)
 
-                move_cmd.linear.x = results[0, 0] * 0.7  # 1.0
+                move_cmd.linear.x = results[0, 0] * 0.8  # 1.0
 
-                move_cmd.angular.z = (2 * results[0, 1] - 1) * 0.88  # 0.88
+                move_cmd.angular.z = (2 * results[0, 1] - 1) * 1.0  # 0.88
 
                 cmd_pub.publish(move_cmd)
+
+                # if the .py is running
+                status_flag.data += 0.1
+                if status_flag.data > 1000.0:
+                    status_flag.data = 1000.0
+                status_pub.publish(status_flag)
 
                 # print yaw_forward, yaw_backward, yaw_leftward, yaw_rightward
                 print data3_to_feed
